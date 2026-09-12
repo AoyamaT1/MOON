@@ -1,0 +1,2771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>打孔器 · CUTMOON</title>
+<style>
+:root{
+  --bg:#08080a;
+  --surface:#131316;
+  --surface2:#1b1b20;
+  --surface3:#232329;
+  --line:rgba(255,255,255,.07);
+  --line2:rgba(255,255,255,.13);
+  --fg:#ece8e1;
+  --dim:#827d72;
+  --amber:#d9a24a;
+  --amber-soft:rgba(217,162,74,.15);
+  --on-amber:#1a1305;
+  --r:14px;
+  --ease:cubic-bezier(.4,0,.2,1);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:#000;color:var(--fg);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  overflow:hidden;
+}
+.app{
+  width:100%;height:100dvh;display:flex;flex-direction:column;overflow:hidden;position:relative;
+  user-select:none;-webkit-user-select:none;
+  background:
+    radial-gradient(120% 60% at 50% -8%, #1a1712 0%, transparent 62%),
+    var(--bg);
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar{
+  flex:0 0 auto;display:flex;align-items:center;gap:6px;
+  padding:12px 14px;position:relative;z-index:2;
+}
+.topbar .tt{
+  flex:1;text-align:center;letter-spacing:.26em;font-size:13px;font-weight:600;
+  color:#fff;text-indent:.26em;opacity:.92;
+}
+.tb{
+  background:none;border:0;color:var(--dim);font-size:13.5px;font-weight:500;
+  padding:8px 11px;border-radius:10px;cursor:pointer;font-family:inherit;
+  transition:color .18s var(--ease),background .18s var(--ease);
+}
+.tb:hover{background:var(--surface2);color:var(--fg)}
+.tb.primary{color:var(--amber)}
+.tb.primary:hover{background:var(--amber-soft);color:var(--amber)}
+.tb.icon{padding:7px;display:flex;align-items:center;color:var(--fg)}
+.tb.icon svg{width:17px;height:17px}
+.tb:disabled{opacity:.28;cursor:default;background:none;color:var(--dim)}
+
+/* ---------- 画布 ---------- */
+.stagewrap{
+  flex:1 1 auto;min-height:180px;position:relative;display:flex;
+  align-items:center;justify-content:center;padding:8px 16px 14px;overflow:hidden;
+}
+.stagebg{
+  position:relative;border-radius:10px;overflow:hidden;line-height:0;
+  box-shadow:0 18px 44px rgba(0,0,0,.72), 0 0 0 1px var(--line);
+}
+/* 尺寸由 JS 的 fitStage() 精确设置，避免 max-height:100% 的循环依赖 */
+#stage{display:block;cursor:crosshair;touch-action:none}
+.drop{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(217,162,74,.13);border:2px dashed var(--amber);color:var(--amber);
+  font-size:14px;font-weight:500;pointer-events:none;opacity:0;transition:opacity .18s;
+}
+.drop.on{opacity:1}
+.hint{
+  position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:11px;
+  color:rgba(255,255,255,.55);pointer-events:none;text-shadow:0 1px 5px rgba(0,0,0,.9);
+  transition:opacity .3s;
+}
+
+/* ---------- 底部控制台 ---------- */
+.dock{
+  flex:0 0 auto;max-height:58dvh;overflow-y:auto;overscroll-behavior:contain;
+  background:var(--surface);border-top:1px solid var(--line);
+  border-radius:18px 18px 0 0;box-shadow:0 -14px 40px rgba(0,0,0,.5);
+}
+.dock::-webkit-scrollbar{width:5px}
+.dock::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:3px}
+.sec{padding:14px 16px}
+.sec + .sec{border-top:1px solid var(--line)}
+.lab{
+  font-size:10.5px;color:var(--dim);letter-spacing:.14em;margin:0 0 10px;
+  text-transform:uppercase;font-weight:600;
+}
+
+/* 横向滚动条 */
+.hscroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.hscroll::-webkit-scrollbar{display:none}
+
+/* ---------- 分段控件（打孔方式）---------- */
+.seg{
+  position:relative;display:flex;background:var(--surface2);
+  border-radius:12px;padding:3px;gap:2px;
+}
+.seg .pill{
+  position:absolute;top:3px;left:0;width:0;bottom:3px;border-radius:9px;background:var(--amber);
+  transition:left .28s var(--ease), width .28s var(--ease);pointer-events:none;
+}
+.seg.no-trans .pill{transition:none}   /* 首帧直接落位，别让药丸从 0 滑过去 */
+.seg button{
+  flex:1;position:relative;z-index:1;border:0;background:none;color:var(--dim);
+  font:500 13px/1 inherit;padding:10px 4px;border-radius:9px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:color .2s var(--ease);
+}
+.seg button svg{width:15px;height:15px;flex:0 0 auto}
+.seg button.on{color:var(--on-amber)}
+
+/* ---------- 构图样式 ---------- */
+.preset{
+  flex:0 0 auto;width:52px;height:52px;border-radius:12px;background:var(--surface2);
+  border:1px solid transparent;cursor:pointer;padding:0;overflow:hidden;position:relative;
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color .18s var(--ease),background .18s var(--ease);
+}
+.preset canvas{display:block}
+.preset.on{border-color:var(--amber);background:var(--amber-soft)}
+.preset span{position:absolute;bottom:2px;left:0;right:0;font-size:8.5px;color:var(--dim);text-align:center;line-height:1}
+.preset.on span{color:var(--amber)}
+
+/* ---------- 形状 ---------- */
+.shape{
+  flex:0 0 auto;width:46px;height:46px;border-radius:12px;background:var(--surface2);
+  border:1px solid transparent;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color .18s var(--ease),background .18s var(--ease);
+}
+.shape.on{border-color:var(--amber);background:var(--amber-soft)}
+
+/* ---------- 滑块 ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px}
+.sl{display:flex;align-items:center;gap:10px;padding:5px 0;min-width:0}
+.sl label{font-size:12px;color:var(--dim);flex:0 0 auto;width:28px;white-space:nowrap}
+/* 影调页签的标签是 3~4 个字（对比度/扫描线/半调网点），要宽一点才不会折行 */
+#filtersA .sl label,#filtersB .sl label{width:50px}
+.sl input[type=range]{
+  -webkit-appearance:none;appearance:none;flex:1;height:24px;background:none;
+  cursor:pointer;min-width:0;
+}
+.sl input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--surface3);border-radius:2px}
+.sl input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;
+  margin-top:-6px;box-shadow:0 1px 4px rgba(0,0,0,.55);
+  transition:transform .16s var(--ease);
+}
+.sl input[type=range]:active::-webkit-slider-thumb{transform:scale(1.18)}
+.sl input[type=range]::-moz-range-track{height:3px;background:var(--surface3);border-radius:2px}
+.sl input[type=range]::-moz-range-thumb{width:15px;height:15px;border:0;border-radius:50%;background:#fff}
+.sl .val{font-size:11px;color:var(--dim);width:36px;text-align:right;flex:0 0 auto;font-variant-numeric:tabular-nums}
+
+/* ---------- 高级设置（可折叠）---------- */
+.adv{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s var(--ease)}
+.adv.open{grid-template-rows:1fr}
+.adv > .advinner{overflow:hidden;min-height:0}
+.advtoggle{
+  width:100%;display:flex;align-items:center;justify-content:space-between;
+  background:none;border:0;border-top:1px solid var(--line);   /* 自己是 button，.sec+.sec 的边框不生效，得自带 */
+  color:var(--dim);font:600 12px/1 inherit;
+  padding:14px 16px;cursor:pointer;letter-spacing:.08em;
+}
+.advtoggle:hover{color:var(--fg)}
+.advtoggle svg{width:16px;height:16px;transition:transform .3s var(--ease)}
+.advtoggle.open{color:var(--amber)}
+.advtoggle.open svg{transform:rotate(180deg)}
+
+/* ---------- 开关 ---------- */
+.switch{
+  width:46px;height:27px;border-radius:14px;background:var(--surface3);
+  border:1px solid var(--line);position:relative;cursor:pointer;padding:0;flex:0 0 auto;
+  transition:background .22s var(--ease),border-color .22s var(--ease);
+}
+.switch i{
+  position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;
+  background:#78736a;transition:left .24s var(--ease),background .24s var(--ease);
+}
+.switch.on{background:var(--amber-soft);border-color:var(--amber)}
+.switch.on i{left:23px;background:var(--amber)}
+.fxrow{display:flex;align-items:center;gap:12px}
+.fxrow .t{flex:1;font-size:13px}
+
+/* ---------- 立体效果 ---------- */
+.depthbox{
+  padding:12px;border-radius:12px;background:var(--surface2);
+  border:1px solid var(--line);display:flex;gap:14px;align-items:flex-start;
+}
+.dial{flex:0 0 auto;text-align:center}
+.dial canvas{display:block;cursor:grab;border-radius:50%;touch-action:none}
+.dial canvas:active{cursor:grabbing}
+.dial span{font-size:10px;color:var(--dim);letter-spacing:.08em}
+.depthright{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.switches{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.sw2{
+  padding:6px 10px;border-radius:8px;background:var(--surface3);border:1px solid transparent;
+  font-size:11.5px;color:var(--dim);cursor:pointer;font-family:inherit;
+  transition:all .18s var(--ease);
+}
+.sw2.on{border-color:var(--amber);color:var(--amber);background:var(--amber-soft)}
+
+/* ---------- 通用按钮 ---------- */
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chip{
+  padding:8px 13px;border-radius:9px;background:var(--surface2);border:1px solid transparent;
+  color:var(--dim);font-size:12.5px;cursor:pointer;font-family:inherit;
+  transition:all .18s var(--ease);
+}
+.chip:hover{color:var(--fg);background:var(--surface3)}
+.chip.on{border-color:var(--amber);color:var(--amber);background:var(--amber-soft)}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.act{
+  flex:1 1 0;min-width:70px;padding:10px 8px;border-radius:11px;background:var(--surface2);
+  border:1px solid transparent;color:var(--fg);cursor:pointer;font-size:12.5px;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .18s var(--ease);
+}
+.act:hover{background:var(--surface3)}
+.act.on{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
+.act svg{width:15px;height:15px;flex:0 0 auto}
+
+/* ---------- 色块 / 输入 ---------- */
+.sw{flex:0 0 auto;width:40px;height:40px;border-radius:11px;border:2px solid transparent;cursor:pointer;padding:0;transition:border-color .18s}
+.sw.on{border-color:#fff}
+input[type=color]{
+  width:40px;height:40px;padding:0;border:1px solid var(--line);border-radius:11px;
+  background:var(--surface2);cursor:pointer
+}
+input[type=text]{
+  width:100%;background:var(--surface2);border:1px solid var(--line);color:var(--fg);
+  border-radius:11px;padding:11px 13px;font-size:13.5px;font-family:inherit;outline:none;
+  transition:border-color .18s var(--ease);
+}
+input[type=text]:focus{border-color:var(--amber)}
+select{
+  background:var(--surface2);border:1px solid var(--line);color:var(--fg);border-radius:11px;
+  padding:10px 12px;font-size:12.5px;font-family:inherit;outline:none;cursor:pointer;
+}
+
+/* ---------- 标签页 ---------- */
+.tabs{display:flex;border-top:1px solid var(--line);background:var(--surface);position:sticky;bottom:0}
+.tab{
+  flex:1;padding:14px 0;background:none;border:0;color:var(--dim);font-size:13.5px;
+  cursor:pointer;font-family:inherit;position:relative;transition:color .2s var(--ease);
+}
+.tab.on{color:#fff}
+.tab.on::after{
+  content:"";position:absolute;left:50%;bottom:6px;transform:translateX(-50%);
+  width:20px;height:2px;border-radius:2px;background:var(--amber);
+}
+.pane{display:none}
+.pane.on{display:block}
+
+/* ---------- 轻提示 ---------- */
+.toast{
+  position:fixed;left:50%;bottom:104px;z-index:50;pointer-events:none;
+  transform:translateX(-50%) translateY(10px);
+  background:rgba(30,30,35,.97);color:var(--fg);border:1px solid var(--line2);
+  padding:10px 17px;border-radius:11px;font-size:12.5px;white-space:nowrap;
+  box-shadow:0 10px 30px rgba(0,0,0,.6);
+  opacity:0;transition:opacity .22s var(--ease),transform .22s var(--ease);
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.note{font-size:11.5px;color:var(--dim);line-height:1.85}
+.note b{color:var(--amber);font-weight:600}
+kbd{background:var(--surface3);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:10.5px}
+
+/* ==================================================================
+   宽屏 / 横屏：改成「画布在左、控制台在右」的双栏
+   ================================================================== */
+@media (min-width:900px), (orientation:landscape) and (min-width:720px){
+  .app{
+    display:grid;grid-template-columns:minmax(0,1fr) 400px;grid-template-rows:auto minmax(0,1fr);
+    background:radial-gradient(80% 60% at 30% 0%, #191612 0%, transparent 60%), var(--bg);
+  }
+  .topbar{grid-column:1/-1;padding:14px 22px}
+  .stagewrap{grid-column:1;grid-row:2;padding:6px 40px 26px}
+  .dock{
+    grid-column:2;grid-row:2;height:100%;max-height:none;border-top:0;
+    border-left:1px solid var(--line);border-radius:0;box-shadow:none;
+    display:flex;flex-direction:column;
+  }
+  .dock > .pane{flex:1 1 auto;min-height:0;overflow-y:auto}
+  .tabs{order:99;margin-top:auto}
+  .grid2{gap:4px 26px}
+  .sec{padding:15px 20px}
+  .preset{width:58px;height:58px}
+  .act{min-width:86px}
+}
+
+/* 窄且矮的横屏手机：压缩纵向留白 */
+@media (orientation:landscape) and (max-height:520px){
+  .stagewrap{padding:4px 18px 10px}
+  .topbar{padding:6px 14px}
+  .sec{padding:10px 16px}
+  .preset{width:44px;height:44px}
+  .shape{width:40px;height:40px}
+}
+
+/* 不支持 dvh 的老浏览器兜底 */
+@supports not (height:100dvh){
+  .app{height:100vh}
+  .dock{max-height:58vh}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <div class="topbar">
+    <button class="tb" id="btnUpload">上传</button>
+    <div class="tt">CUTMOON</div>
+    <button class="tb icon" id="btnUndo" title="撤销 (Ctrl+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+    </button>
+    <button class="tb icon" id="btnRedo" title="重做 (Ctrl+Shift+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>
+    </button>
+    <button class="tb primary" id="btnExport">导出</button>
+  </div>
+
+  <div class="stagewrap" id="stagewrap">
+    <div class="stagebg" id="stagebg">
+      <canvas id="stage"></canvas>
+      <div class="drop" id="drop">松手载入图片</div>
+      <div class="hint" id="hint"></div>
+    </div>
+  </div>
+
+  <div class="dock" id="dock">
+
+    <!-- ============ 设计 ============ -->
+    <div class="pane on" id="pane-design">
+
+      <!-- 打孔方式 -->
+      <div class="sec">
+        <div class="seg" id="seg">
+          <div class="pill" id="segPill"></div>
+          <button id="mArray" class="on">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="6" r="1.7"/><circle cx="12" cy="6" r="1.7"/><circle cx="18" cy="6" r="1.7"/><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/><circle cx="6" cy="18" r="1.7"/><circle cx="12" cy="18" r="1.7"/><circle cx="18" cy="18" r="1.7"/></svg>预设</button>
+          <button id="mDraw">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20l4-1 10-10a2.1 2.1 0 0 0-3-3L5 16l-1 4z"/></svg>点选</button>
+          <button id="mStroke">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 18c4 0 5-11 9-11s5 9 9 9"/><circle cx="7" cy="15" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="7" r="1.3" fill="currentColor" stroke="none"/><circle cx="17" cy="14" r="1.3" fill="currentColor" stroke="none"/></svg>轨迹</button>
+        </div>
+      </div>
+
+      <!-- 构图样式（仅预设模式）-->
+      <div class="sec" id="secPreset">
+        <p class="lab">构图样式</p>
+        <div class="hscroll" id="presets"></div>
+      </div>
+
+      <!-- 主控：数量 / 大小 -->
+      <div class="sec">
+        <div class="grid2" id="slidersMain"></div>
+      </div>
+
+      <!-- 形状 -->
+      <div class="sec">
+        <p class="lab">形状</p>
+        <div class="hscroll" id="shapes"></div>
+      </div>
+
+      <!-- 立体效果（默认只留总开关 + 深度）-->
+      <div class="sec">
+        <div class="fxrow" style="margin-bottom:12px">
+          <span class="t">立体效果</span>
+          <button class="switch on" id="fxMaster" title="一键开关全部立体效果"><i></i></button>
+        </div>
+        <div class="sl"><label>深度</label><input type="range" id="fxDepth" min="0" max="1" step="0.01" value="0.55"><span class="val" id="fxDepthV">55%</span></div>
+      </div>
+
+      <!-- 高级设置（折叠）-->
+      <button class="advtoggle" id="advToggle" aria-expanded="false" aria-controls="adv">
+        <span>高级设置</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="adv" id="adv">
+      <div class="advinner">
+      <div class="sec" id="advSecs">
+        <p class="lab">排布细节</p>
+        <div class="grid2" id="slidersAdv"></div>
+      </div>
+      <div class="sec">
+        <p class="lab">立体细节</p>
+        <div class="depthbox">
+          <div class="dial">
+            <canvas id="dial" width="132" height="132" style="width:64px;height:64px"></canvas>
+            <span>光源</span>
+          </div>
+          <div class="depthright">
+            <div class="switches">
+              <button class="sw2 on" data-fx="bevel">凹陷倒角</button>
+              <button class="sw2 on" data-fx="rim">纸厚断口</button>
+              <button class="sw2 on" data-fx="shadow">投影</button>
+            </div>
+            <div class="sl"><label>厚度</label><input type="range" id="fxThick" min="0" max="0.2" step="0.005" value="0.055"><span class="val" id="fxThickV">5.5%</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- 选中单个孔后可独立微调（单击画布上的孔即可选中）-->
+      <div class="sec" id="selBox" style="display:none">
+        <p class="lab">选中的孔</p>
+        <div class="sl"><label>大小</label><input type="range" id="selSize" min="0.25" max="2.4" step="0.01"><span class="val" id="selSizeV"></span></div>
+        <div class="sl"><label>旋转</label><input type="range" id="selRot" min="-180" max="180" step="1"><span class="val" id="selRotV"></span></div>
+        <div class="row" style="margin-top:8px">
+          <button class="chip" id="selDelete">删除这个孔</button>
+          <button class="chip" id="selDeselect">取消选中</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="row">
+          <button class="chip" id="btnRandomShape">随机形状</button>
+          <button class="chip" id="btnResetPos" title="把所有手动挪动过的孔和碎片放回算法排布的位置">复位位置</button>
+          <button class="chip" id="btnRepunch">重新打孔</button>
+          <button class="chip" id="btnResetAll" title="所有参数恢复出厂设置（保留已上传的图片）">恢复默认</button>
+        </div>
+      </div>
+      </div><!-- /.advinner -->
+      </div><!-- /.adv -->
+    </div><!-- /#pane-design -->
+
+    <!-- ============ 背景 ============ -->
+    <div class="pane" id="pane-bg">
+      <div class="sec">
+        <p class="lab">底色</p>
+        <div class="hscroll" id="swatches"></div>
+        <div class="hscroll" id="texRow" style="margin-top:12px"></div>
+        <div class="row" style="margin-top:12px">
+          <input type="color" id="bgColor" value="#a8792f" title="主色">
+          <input type="color" id="bgColor2" value="#7d5518" title="副色">
+          <span class="note" style="flex:1;min-width:0">主色 / 副色</span>
+        </div>
+      </div>
+      <div class="sec">
+        <p class="lab">画布比例</p>
+        <div class="row" id="ratios"></div>
+      </div>
+      <div class="sec">
+        <p class="lab">版面分割（图片 / 底色 的高度比）</p>
+        <div class="sl"><label>分割</label><input type="range" id="split" min="0.25" max="0.85" step="0.01" value="0.55"><span class="val" id="splitV">55%</span></div>
+        <p class="note" style="margin-top:8px">导出时按 <b>1×／2×／3×</b> 输出 PNG。当前内部分辨率 <b id="resInfo">1200×1500</b>。</p>
+        <div class="row" style="margin-top:8px">
+          <button class="chip" id="exp1">导出 1×</button>
+          <button class="chip" id="exp2">导出 2×</button>
+          <button class="chip" id="exp3">导出 3×</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <p class="lab">配置</p>
+        <div class="row">
+          <select id="cfgList" style="flex:1;min-width:0"></select>
+          <button class="chip" id="cfgLoad">载入</button>
+          <button class="chip" id="cfgDel">删除</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="text" id="cfgName" placeholder="给这套配置起个名字" style="flex:1;min-width:0">
+          <button class="chip" id="cfgSave">保存当前</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="chip" id="cfgExport">导出 JSON</button>
+          <button class="chip" id="cfgImport">导入 JSON</button>
+        </div>
+        <p class="note" style="margin-top:10px">
+          参数会自动存在本机浏览器里，刷新不丢。注意 <b>图片本身不会被保存</b>，下次打开需要重新上传。
+        </p>
+        <input type="file" id="cfgFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+
+    <!-- ============ 文案 ============ -->
+    <div class="pane" id="pane-text">
+      <div class="sec">
+        <p class="lab">标题</p>
+        <input type="text" id="txTitle" placeholder="留空则不显示">
+      </div>
+      <div class="sec">
+        <p class="lab">副标题</p>
+        <input type="text" id="txSub" placeholder="选填">
+      </div>
+      <div class="sec">
+        <div class="sl"><label>字号</label><input type="range" id="txSize" min="0.02" max="0.12" step="0.002" value="0.045"><span class="val" id="txSizeV">4.5%</span></div>
+        <div class="sl"><label>位置</label><input type="range" id="txPos" min="0" max="1" step="0.01" value="0.5"><span class="val" id="txPosV">50%</span></div>
+        <div class="row" style="margin-top:6px">
+          <input type="color" id="txColor" value="#f5ead6">
+          <select id="txFont">
+            <option value="serif">宋体 / 衬线</option>
+            <option value="sans">黑体 / 无衬线</option>
+          </select>
+        </div>
+      </div>
+      <div class="sec">
+        <p class="note">
+          <b>三种打孔方式</b><br>
+          · <b>预设</b>：选一种构图样式自动排布，再用滑块调数量／大小／密度／方向／比例／错落<br>
+          · <b>点选</b>：在图片上逐个点击落孔<br>
+          · <b>轨迹</b>：按住拖动画出笔迹，孔沿路径连续打出，密度决定疏密<br>
+          <br>
+          <b>手动微调</b><br>
+          · 上方的孔和下方的碎片<b>都可以直接拖动</b>，手动挪过的位置不会被重排冲掉<br>
+          · 双击删除一个孔或一块碎片 · 「复位位置」全部归位<br>
+          <br>
+          <b>其他</b><br>
+          · 拖拽图片到画布载入，或 <kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴<br>
+          · 快捷键 <kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销 · <kbd>R</kbd> 重新打孔 · <kbd>E</kbd> 导出
+        </p>
+      </div>
+    </div>
+
+    <!-- ============ 影调（只作用于图片本身）============ -->
+    <div class="pane" id="pane-tone">
+      <div class="sec">
+        <p class="lab">调色</p>
+        <div class="grid2" id="filtersA"></div>
+      </div>
+      <div class="sec">
+        <p class="lab">叠加材质</p>
+        <div class="grid2" id="filtersB"></div>
+      </div>
+      <div class="sec">
+        <div class="row">
+          <button class="chip" id="btnResetTone">重置影调</button>
+        </div>
+        <p class="note" style="margin-top:10px">
+          影调直接烘进图片里，不增加运行开销。碎片的纹理也会跟着一起变。
+        </p>
+      </div>
+    </div>
+
+    <!-- ============ 标签栏 ============ -->
+    <div class="tabs">
+      <button class="tab on" data-tab="design">设计</button>
+      <button class="tab" data-tab="tone">影调</button>
+      <button class="tab" data-tab="bg">背景</button>
+      <button class="tab" data-tab="text">文案</button>
+    </div>
+  </div>
+
+  <input type="file" id="file" accept="image/*" hidden>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   打孔器 CUTMOON — 单文件实现
+   图片被"打孔"，孔里透出底色并带立体感；打下来的碎片带着原图纹理
+   掉在下方底色区。
+   ===================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* 0. 工具                                                             */
+/* ------------------------------------------------------------------ */
+const $  = s => document.querySelector(s);
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+const TAU = Math.PI*2;
+
+/** 确定性随机数（同一个 seed 永远得到同样的图案） */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hex2rgb(h){
+  h = h.replace('#','');
+  if (h.length === 3) h = h.split('').map(c=>c+c).join('');
+  const n = parseInt(h,16);
+  return [n>>16&255, n>>8&255, n&255];
+}
+const rgba = (h,a) => { const c = hex2rgb(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+/** 提亮 / 压暗一个 hex 颜色 */
+function shade(h, amt){
+  const c = hex2rgb(h).map(v => Math.round(amt>=0 ? v+(255-v)*amt : v*(1+amt)));
+  return '#' + c.map(v=>clamp(v,0,255).toString(16).padStart(2,'0')).join('');
+}
+
+/* ------------------------------------------------------------------ */
+/* 1. 形状库（单位空间 -1..1，通过矩阵变换复用，保证图标与实物一致）    */
+/* ------------------------------------------------------------------ */
+const U = {};
+
+function defShape(id, eo, build){
+  const p = new Path2D();
+  build(p);
+  U[id] = { p, eo: !!eo };
+}
+function poly(p, pts){
+  pts.forEach(([x,y],i) => i ? p.lineTo(x,y) : p.moveTo(x,y));
+  p.closePath();
+}
+function starPts(n, r1, r2){
+  const a = [];
+  for (let i=0;i<n*2;i++){
+    const ang = -Math.PI/2 + i*Math.PI/n;
+    const rr  = i%2 ? r2 : r1;
+    a.push([Math.cos(ang)*rr, Math.sin(ang)*rr]);
+  }
+  return a;
+}
+function rrect(p, x, y, w, h, r){
+  p.moveTo(x+r,y);
+  p.lineTo(x+w-r,y); p.quadraticCurveTo(x+w,y,x+w,y+r);
+  p.lineTo(x+w,y+h-r); p.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  p.lineTo(x+r,y+h);   p.quadraticCurveTo(x,y+h,x,y+h-r);
+  p.lineTo(x,y+r);     p.quadraticCurveTo(x,y,x+r,y);
+  p.closePath();
+}
+
+defShape('circle', 0, p => p.arc(0,0,1,0,TAU));
+defShape('square', 0, p => p.rect(-.88,-.88,1.76,1.76));
+defShape('round',  0, p => rrect(p,-.92,-.92,1.84,1.84,.32));
+defShape('triangle',0,p => poly(p,[[0,-1.05],[1,.78],[-1,.78]]));
+defShape('diamond',0, p => poly(p,[[0,-1.1],[.95,0],[0,1.1],[-.95,0]]));
+defShape('hex',    0, p => {
+  const pts=[]; for(let i=0;i<6;i++){const a=i*Math.PI/3-Math.PI/2; pts.push([Math.cos(a),Math.sin(a)]);}
+  poly(p,pts);
+});
+defShape('star5', 0, p => poly(p, starPts(5,1,.42)));
+defShape('star6', 0, p => poly(p, starPts(6,1,.56)));
+defShape('sparkle',0,p => {
+  const k=.17;
+  p.moveTo(0,-1.15);
+  p.quadraticCurveTo(k,-k,1.15,0);
+  p.quadraticCurveTo(k,k,0,1.15);
+  p.quadraticCurveTo(-k,k,-1.15,0);
+  p.quadraticCurveTo(-k,-k,0,-1.15);
+  p.closePath();
+});
+defShape('flower', 0, p => {
+  for (let i=0;i<5;i++){
+    const a = -Math.PI/2 + i*TAU/5;
+    const cx = Math.cos(a)*.5, cy = Math.sin(a)*.5;
+    p.moveTo(cx+.55, cy);
+    p.arc(cx, cy, .55, 0, TAU);
+  }
+});
+defShape('heart', 0, p => {
+  p.moveTo(0,.92);
+  p.bezierCurveTo(-1.35,-.12,-.78,-1.18,0,-.44);
+  p.bezierCurveTo(.78,-1.18,1.35,-.12,0,.92);
+  p.closePath();
+});
+defShape('drop', 0, p => {
+  p.moveTo(0,-1.15);
+  p.bezierCurveTo(.58,-.34,.96,.04,.96,.34);
+  p.arc(0,.34,.96,0,Math.PI);
+  p.bezierCurveTo(-.96,.04,-.58,-.34,0,-1.15);
+  p.closePath();
+});
+defShape('cross', 0, p => {
+  const a=.33,b=1;
+  poly(p,[[-a,-b],[a,-b],[a,-a],[b,-a],[b,a],[a,a],[a,b],[-a,b],[-a,a],[-b,a],[-b,-a],[-a,-a]]);
+});
+defShape('ring', 1, p => { p.arc(0,0,1,0,TAU); p.arc(0,0,.55,0,TAU); });
+defShape('leaf', 0, p => {
+  p.moveTo(0,-1.05);
+  p.quadraticCurveTo(1.05,-.32,0,1.05);
+  p.quadraticCurveTo(-1.05,-.32,0,-1.05);
+  p.closePath();
+});
+defShape('bolt', 0, p => poly(p,[[.2,-1.12],[-.52,.12],[-.06,.12],[-.2,1.12],[.56,-.16],[.1,-.16]]));
+defShape('bird', 0, p => {
+  p.moveTo(-1.15,-.12);
+  p.quadraticCurveTo(-.5,-.62,0,-.2);
+  p.quadraticCurveTo(.5,-.62,1.15,-.12);
+  p.quadraticCurveTo(.5,.06,0,.18);
+  p.quadraticCurveTo(-.5,.06,-1.15,-.12);
+  p.closePath();
+});
+defShape('puzzle', 0, p => {
+  const r=.35;
+  p.moveTo(-1,-1); p.lineTo(-r,-1);
+  p.arc(0,-1,r,Math.PI,0,false);            // 上凸
+  p.lineTo(1,-1);  p.lineTo(1,-r);
+  p.arc(1,0,r,-Math.PI/2,Math.PI/2,false);  // 右凸
+  p.lineTo(1,1);   p.lineTo(r,1);
+  p.arc(0,1,r,0,Math.PI,false);             // 下凸
+  p.lineTo(-1,1);  p.lineTo(-1,r);
+  p.arc(-1,0,r,Math.PI/2,Math.PI*1.5,false);// 左凸
+  p.closePath();
+});
+
+const SHAPE_LIST = [
+  ['circle','圆'],['square','方'],['round','圆角'],['triangle','三角'],
+  ['diamond','菱形'],['hex','六边'],['star5','五角'],['star6','六芒'],
+  ['sparkle','闪光'],['flower','花'],['heart','心'],['drop','水滴'],
+  ['cross','十字'],['ring','环'],['leaf','叶'],['bolt','闪电'],
+  ['bird','飞鸟'],['puzzle','拼图']
+];
+const SHAPE_IDS = SHAPE_LIST.map(s => s[0]);
+
+/** 生成某个形状在某处的 Path2D（含平移/旋转/缩放） */
+function shapePath(id, cx, cy, r, rot){
+  const m = new DOMMatrix();
+  m.translateSelf(cx, cy);
+  m.rotateSelf(rot * 180 / Math.PI);
+  m.scaleSelf(r, r);
+  const p = new Path2D();
+  p.addPath((U[id] || U.circle).p, m);
+  return p;
+}
+const fillRule = id => (U[id] && U[id].eo) ? 'evenodd' : 'nonzero';
+
+/* ------------------------------------------------------------------ */
+/* 2. 构图层（归一化 0..1，方向旋转 + 溢出自动收缩）                   */
+/* ------------------------------------------------------------------ */
+const LAYOUTS = [
+  ['scatter','散点'],['grid','网格'],['matrix','阵列'],['diagonal','对角'],
+  ['wave','波浪'],['ring','环形'],['spiral','螺旋'],['border','边框'],
+  ['cluster','聚簇'],['rain','落雨']
+];
+
+function buildLayout(name, n, rng, P){
+  const pts = [];
+  const push = (u,v) => pts.push({u,v});
+
+  switch(name){
+    case 'grid': {
+      const cols = Math.max(1, Math.round(Math.sqrt(n*1.35)));
+      const rows = Math.ceil(n/cols);
+      const m = .06 + (1-P.density)*.20;
+      for (let i=0;i<n;i++){
+        const c = i%cols, r = (i/cols)|0;
+        push(cols>1 ? m+(1-2*m)*c/(cols-1) : .5,
+             rows>1 ? m+(1-2*m)*r/(rows-1) : .5);
+      }
+      break;
+    }
+    case 'matrix': {
+      const cols = Math.max(1, Math.round(Math.sqrt(n)));
+      const rows = Math.ceil(n/cols);
+      const m = .04 + (1-P.density)*.14;
+      for (let i=0;i<n;i++){
+        const c = i%cols, r = (i/cols)|0;
+        push(m+(1-2*m)*(cols>1?c/(cols-1):.5),
+             m+(1-2*m)*(rows>1?r/(rows-1):.5));
+      }
+      break;
+    }
+    case 'scatter': {
+      const s = .26 + P.density*.55;
+      for (let i=0;i<n;i++)
+        push(.5+(rng()+rng()+rng()-1.5)*s, .5+(rng()+rng()+rng()-1.5)*s);
+      break;
+    }
+    case 'diagonal': {
+      const s = .12 + P.density*.5;
+      for (let i=0;i<n;i++){
+        const t = n>1 ? i/(n-1) : .5;
+        push(.5+(t-.5)*s*2, .5-(t-.5)*s*2);
+      }
+      break;
+    }
+    case 'wave': {
+      const amp = .10 + P.density*.30, cyc = 1.4 + (1-P.density)*2.2;
+      for (let i=0;i<n;i++){
+        const t = n>1 ? i/(n-1) : .5;
+        push(t, .5 + Math.sin(t*Math.PI*cyc)*amp);
+      }
+      break;
+    }
+    case 'ring': {
+      const R = .18 + P.density*.32;
+      for (let i=0;i<n;i++){
+        const a = i/n*TAU - Math.PI/2;
+        push(.5+Math.cos(a)*R, .5+Math.sin(a)*R);
+      }
+      break;
+    }
+    case 'spiral': {
+      const T = 2.2 + P.density*2;
+      for (let i=0;i<n;i++){
+        const t = n>1 ? i/(n-1) : 0;
+        const a = t*TAU*T;
+        const R = .04 + t*(.20+P.density*.26);
+        push(.5+Math.cos(a)*R, .5+Math.sin(a)*R);
+      }
+      break;
+    }
+    case 'border': {
+      const m = .10 + (1-P.density)*.18;
+      for (let i=0;i<n;i++){
+        const t = n>1 ? i/(n-1) : 0;
+        const d = t*4;
+        if      (d < 1) push(m + (1-2*m)*d, m);
+        else if (d < 2) push(1-m, m + (1-2*m)*(d-1));
+        else if (d < 3) push(1-m - (1-2*m)*(d-2), 1-m);
+        else            push(m, 1-m - (1-2*m)*(d-3));
+      }
+      break;
+    }
+    case 'cluster': {
+      const k = 2 + Math.round(P.density*2);
+      const cs = [];
+      for (let i=0;i<k;i++) cs.push([.22+rng()*.56, .22+rng()*.56]);
+      for (let i=0;i<n;i++){
+        const c = cs[i%k];
+        push(c[0]+(rng()+rng()-1)*.16, c[1]+(rng()+rng()-1)*.16);
+      }
+      break;
+    }
+    case 'rain':
+    default: {
+      for (let i=0;i<n;i++)
+        push(rng()*.96+.02, rng()*.96+.02);
+      break;
+    }
+  }
+
+  // 方向：绕中心旋转
+  const a = P.dir*Math.PI/180, ca = Math.cos(a), sa = Math.sin(a);
+  let out = pts.map(p => {
+    const u = p.u-.5, v = p.v-.5;
+    return { u: u*ca - v*sa + .5, v: u*sa + v*ca + .5 };
+  });
+
+  // 旋转后若溢出，整体收缩回去（只缩不放，密度手感不丢）
+  let minU=1,maxU=0,minV=1,maxV=0;
+  for (const p of out){
+    if(p.u<minU)minU=p.u; if(p.u>maxU)maxU=p.u;
+    if(p.v<minV)minV=p.v; if(p.v>maxV)maxV=p.v;
+  }
+  const bw = Math.max(maxU-minU, 1e-4), bh = Math.max(maxV-minV, 1e-4);
+  const s = Math.min(1, .94/bw, .94/bh);
+  if (s < 1){
+    const cu = (minU+maxU)/2, cv = (minV+maxV)/2;
+    out = out.map(p => ({ u:.5+(p.u-cu)*s, v:.5+(p.v-cv)*s }));
+  }
+
+  // 错落抖动
+  const j = P.scatter*.16;
+  out = out.map(p => ({
+    u: clamp(p.u + (rng()*2-1)*j, .02, .98),
+    v: clamp(p.v + (rng()*2-1)*j, .02, .98)
+  }));
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. 状态                                                             */
+/* ------------------------------------------------------------------ */
+const S = {
+  img: null,
+  seed: (Math.random()*1e9)|0,
+  rng: null,
+
+  holes: [],     // { u,v (0..1 相对图片区), sizeMul, rotOff(度), shape }
+  pieces: [],    // { u,v (0..1 相对底色区), rot }
+
+  preset: 'scatter',
+  shape: 'circle',
+  randomShape: false,
+  mode: 'array',
+
+  // tilt      碎片/孔自身的随机歪斜（独立于"错落"的位移抖动）
+  // pieceScale 碎片相对孔洞的大小倍率 —— 两者解耦，可以做出"孔小碎片大"的层叠
+  P: { count:24, size:.055, density:.5, dir:0, ratio:.45, scatter:.35, tilt:.25, pieceScale:1 },
+
+  split: .55,
+  aspect: 1.25,                       // 高 / 宽   (1.25 = 4:5)
+
+  bg: { color:'#a8792f', color2:'#7d5518', style:'flat' },
+
+  // 图像滤镜与叠加材质：全部在 buildPaper() 预渲染阶段烘进去，运行时零开销
+  filter: {
+    bright:1, contrast:1, saturate:1, warmth:0, fade:0, blur:0, sepia:0,   // 调色
+    grain:0, vignette:0, scanline:0, halftone:0                            // 叠加材质
+  },
+
+  fx: { bevel:true, rim:true, shadow:true, depth:.55, thick:.055, light:225 },
+
+  text: { title:'', sub:'', size:.045, pos:.5, color:'#f5ead6', font:'serif' }
+};
+
+/* 画布尺寸 */
+let SW = 1200, SH = 1500;
+let paper = null;          // 预渲染的"纸面"（cover 适配后的原图）
+let paperBase = '#cfc7b6'; // 纸面平均色，碎片抠图越界时的兜底
+let undoStack = [];
+
+const imgRect  = () => ({ x:0, y:0, w:SW, h:Math.round(SH*S.split) });
+const spillRect= () => { const h = Math.round(SH*S.split); return { x:0, y:h, w:SW, h:SH-h }; };
+
+/* ------------------------------------------------------------------ */
+/* 4. 画布 / 纸面                                                     */
+/* ------------------------------------------------------------------ */
+const stage = $('#stage');
+const ctx   = stage.getContext('2d');
+
+function applyCanvasSize(){
+  SH = Math.round(SW * S.aspect);
+  stage.width  = SW;
+  stage.height = SH;
+  $('#resInfo').textContent = `${SW}×${SH}`;
+  fitStage();
+}
+
+/** 按容器可用空间算 canvas 的显示尺寸（手机竖屏 / 桌面双栏都走这里） */
+let fitRaf = 0;
+function fitStage(){
+  if (fitRaf) return;
+  fitRaf = requestAnimationFrame(() => {
+    fitRaf = 0;
+    const wrap = $('#stagewrap');
+    const cs = getComputedStyle(wrap);
+    const availW = wrap.clientWidth  - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = wrap.clientHeight - parseFloat(cs.paddingTop)  - parseFloat(cs.paddingBottom);
+    if (availW <= 0 || availH <= 0) return;
+    let w = availW, h = w * S.aspect;
+    if (h > availH){ h = availH; w = h / S.aspect; }
+    stage.style.width  = Math.max(40, Math.floor(w)) + 'px';
+    stage.style.height = Math.max(40, Math.floor(h)) + 'px';
+  });
+}
+if (window.ResizeObserver){
+  new ResizeObserver(fitStage).observe($('#stagewrap'));
+}
+window.addEventListener('orientationchange', () => setTimeout(fitStage, 120));
+
+/** 把原图按 cover 方式画进 paper 画布，顺便取一个平均色当"纸张底色"
+ *  滤镜与叠加材质也在这里一次烘完 —— 所以运行时零开销 */
+function buildPaper(){
+  const ir = imgRect();
+  if (!S.img || !ir.w || !ir.h){ paper = null; return; }
+  const c = document.createElement('canvas');
+  c.width = ir.w; c.height = ir.h;
+  const x = c.getContext('2d');
+  const iw = S.img.naturalWidth, ih = S.img.naturalHeight;
+  const s  = Math.max(c.width/iw, c.height/ih);
+  const dw = iw*s, dh = ih*s;
+  const f  = S.filter;
+  // 平铺块的尺寸跟着画布分辨率走，保证预览和导出观感一致
+  const ts = Math.max(8, Math.round(180 * (SW / 1200)));
+
+  // 1) 基础调色：一次性走 ctx.filter
+  const fl = [];
+  if (+f.bright   !== 1) fl.push(`brightness(${f.bright})`);
+  if (+f.contrast !== 1) fl.push(`contrast(${f.contrast})`);
+  if (+f.saturate !== 1) fl.push(`saturate(${f.saturate})`);
+  if (+f.sepia    >  0)  fl.push(`sepia(${f.sepia})`);
+  if (+f.blur     >  0)  fl.push(`blur(${f.blur}px)`);
+  x.imageSmoothingQuality = 'high';
+  if (fl.length) x.filter = fl.join(' ');
+  x.drawImage(S.img, (c.width-dw)/2, (c.height-dh)/2, dw, dh);
+  x.filter = 'none';
+
+  // 2) 色温：暖橙 / 冷蓝叠加
+  if (+f.warmth !== 0){
+    x.save();
+    x.globalCompositeOperation = 'overlay';
+    x.globalAlpha = Math.min(.5, Math.abs(f.warmth)*.45);
+    x.fillStyle = f.warmth > 0 ? '#ff9d3c' : '#3ca6ff';
+    x.fillRect(0,0,c.width,c.height);
+    x.restore();
+  }
+  // 3) 褪色：抬黑场，做出旧照片的灰雾感
+  if (+f.fade > 0){
+    x.save();
+    x.globalCompositeOperation = 'lighten';
+    x.globalAlpha = f.fade*.42;
+    x.fillStyle = '#d9d3c7';
+    x.fillRect(0,0,c.width,c.height);
+    x.restore();
+  }
+  // 4) 叠加材质
+  if (+f.grain    > 0) overlayTile(x, c.width, c.height, getTile('grain',   ts),       f.grain*.9,    'overlay');
+  if (+f.halftone > 0) overlayTile(x, c.width, c.height, getTile('dots',    ts*1.6),   f.halftone*.5, 'multiply');
+  if (+f.scanline > 0) overlayTile(x, c.width, c.height, getTile('scan',    ts*.55),   f.scanline*.55,'multiply');
+  // 5) 暗角
+  if (+f.vignette > 0){
+    const g = x.createRadialGradient(
+      c.width/2, c.height/2, Math.min(c.width,c.height)*.28,
+      c.width/2, c.height/2, Math.max(c.width,c.height)*.72);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(0,0,0,${Math.min(.9, f.vignette)})`);
+    x.save(); x.fillStyle = g; x.fillRect(0,0,c.width,c.height); x.restore();
+  }
+
+  paper = c;
+
+  // 缩到 8×8 取平均色：碎片抠到图片边缘外时用它兜底，避免露出黑块
+  try {
+    const t = document.createElement('canvas');
+    t.width = t.height = 8;
+    const tx = t.getContext('2d');
+    tx.drawImage(c, 0, 0, 8, 8);
+    const d = tx.getImageData(0,0,8,8).data;
+    let r=0,g=0,b=0;
+    for (let i=0;i<d.length;i+=4){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; }
+    const n = d.length/4;
+    paperBase = `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})`;
+  } catch(_) { paperBase = '#cfc7b6'; }
+}
+
+/* ------------------------------------------------------------------ */
+/* 4b. 叠加材质（作用于纸面，同样在 buildPaper 阶段一次烘完）          */
+/* ------------------------------------------------------------------ */
+
+/** 平铺噪点块。alphaMax 控制颗粒强度 */
+function makeNoise(size, alphaMax){
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d');
+  const d = x.createImageData(size, size);
+  for (let i=0;i<d.data.length;i+=4){
+    const v = 128 + (Math.random()*2-1)*88;
+    d.data[i] = d.data[i+1] = d.data[i+2] = v;
+    d.data[i+3] = Math.random()*alphaMax;
+  }
+  x.putImageData(d, 0, 0);
+  return c;
+}
+
+/** 半调网点：交错排列的圆点阵 */
+function makeDots(size){
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d');
+  x.fillStyle = '#000';
+  const half = size/2;
+  for (let row=0; row<2; row++){
+    for (let col=0; col<2; col++){
+      const cx = col*half + (row%2 ? half/2 : 0) + half/2;
+      const cy = row*half + half/2;
+      x.beginPath(); x.arc(cx % size, cy % size, size*.10, 0, TAU); x.fill();
+    }
+  }
+  return c;
+}
+
+/** 扫描线：横向细线 */
+function makeScan(size){
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d');
+  x.fillStyle = '#000';
+  x.fillRect(0, 0, size, Math.max(1, size*.04));
+  return c;
+}
+
+/** 斜细线 */
+function makeStripe(size){
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d');
+  x.strokeStyle = 'rgba(0,0,0,.55)';
+  x.lineWidth = Math.max(1, size*.022);
+  x.beginPath();
+  for (let i=-size; i<size*2; i+=size*.28){ x.moveTo(i,0); x.lineTo(i+size,size); }
+  x.stroke();
+  return c;
+}
+
+/** 亚麻布纹：细密的经纬交织 */
+function makeLinen(size){
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d');
+  x.strokeStyle = 'rgba(0,0,0,.30)';
+  x.lineWidth = Math.max(1, size*.012);
+  const step = size/16;
+  x.beginPath();
+  for (let i=0;i<size;i+=step){ x.moveTo(i,0); x.lineTo(i,size); x.moveTo(0,i); x.lineTo(size,i); }
+  x.stroke();
+  return c;
+}
+
+const tileCache = new Map();
+
+/** 缓存的平铺块。size 已按画布分辨率换算过 —— 否则导出 3× 时纹理会细 3 倍 */
+function getTile(kind, size){
+  const key = kind + '|' + size;
+  if (tileCache.has(key)) return tileCache.get(key);
+  let cv;
+  if      (kind === 'paper')   cv = makeNoise(size, 64);
+  else if (kind === 'grain')   cv = makeNoise(size, 255);
+  else if (kind === 'dots')    cv = makeDots(size);
+  else if (kind === 'scan')    cv = makeScan(size);
+  else if (kind === 'stripes') cv = makeStripe(size);
+  else if (kind === 'linen')   cv = makeLinen(size);
+  else                         cv = makeNoise(size, 60);
+  tileCache.set(key, cv);
+  return cv;
+}
+
+/** 把一块平铺材质叠到当前上下文上 */
+function overlayTile(x, w, h, cv, alpha, mode){
+  x.save();
+  x.globalCompositeOperation = mode || 'overlay';
+  x.globalAlpha = alpha;
+  x.fillStyle = x.createPattern(cv, 'repeat');
+  x.fillRect(0, 0, w, h);
+  x.restore();
+}
+
+/* ------------------------------------------------------------------ */
+/* 4c. 底板纹理                                                        */
+/*   缓存 key 必须含 SW/SH 和颜色 —— 否则导出 3× 时纹理会细 3 倍，      */
+/*   预览和导出的观感对不上（这是原来 noisePat 的 bug）。               */
+/* ------------------------------------------------------------------ */
+const BG_FULL = ['gradient','radial','watercolor','marble','speck','vignette'];
+const bgCache = new Map();
+
+/** 大尺度、不可平铺的底板纹理。w/h 可传小尺寸用于生成缩略图 */
+function makeFullBoard(style, w, h){
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  const c1 = S.bg.color, c2 = S.bg.color2;
+  const light = shade(c1,  .30);
+  const dark  = shade(c1, -.38);
+
+  if (style === 'gradient'){
+    const g = x.createLinearGradient(0, 0, w*.35, h);
+    g.addColorStop(0, c1); g.addColorStop(1, c2);
+    x.fillStyle = g; x.fillRect(0,0,w,h);
+  }
+  else if (style === 'radial'){
+    const g = x.createRadialGradient(w*.5, h*.42, Math.min(w,h)*.05,
+                                     w*.5, h*.42, Math.max(w,h)*.78);
+    g.addColorStop(0, c1); g.addColorStop(1, c2);
+    x.fillStyle = g; x.fillRect(0,0,w,h);
+  }
+  else if (style === 'watercolor'){
+    x.fillStyle = c1; x.fillRect(0,0,w,h);
+    const rng = mulberry32(9182);
+    for (let i=0;i<26;i++){
+      const cx = rng()*w, cy = rng()*h, r = (.12 + rng()*.30)*Math.max(w,h);
+      const col = rng() < .45 ? c2 : (rng() < .5 ? light : dark);
+      const g = x.createRadialGradient(cx,cy,0, cx,cy,r);
+      g.addColorStop(0, rgba(col, .14 + rng()*.15));
+      g.addColorStop(1, rgba(col, 0));
+      x.fillStyle = g;
+      x.beginPath(); x.arc(cx,cy,r,0,TAU); x.fill();
+    }
+  }
+  else if (style === 'marble'){
+    x.fillStyle = c1; x.fillRect(0,0,w,h);
+    const rng = mulberry32(4477);
+    x.lineWidth = Math.max(1, w*.006);
+    for (let i=0;i<18;i++){
+      const base = rng()*h, amp = h*(.05 + rng()*.18), freq = 1 + rng()*3;
+      x.strokeStyle = rgba(c2, .10 + rng()*.16);
+      x.beginPath();
+      for (let px=0; px<=w; px+=Math.max(1,w/60)){
+        const y = base + Math.sin(px/w*Math.PI*freq + i)*amp;
+        px ? x.lineTo(px,y) : x.moveTo(px,y);
+      }
+      x.stroke();
+    }
+  }
+  else if (style === 'speck'){
+    x.fillStyle = c1; x.fillRect(0,0,w,h);
+    const rng = mulberry32(3311);
+    for (let i=0;i<900;i++){
+      x.fillStyle = rgba(rng() < .5 ? dark : c2, .10 + rng()*.22);
+      x.beginPath();
+      x.arc(rng()*w, rng()*h, w*(.0012 + rng()*.004), 0, TAU);
+      x.fill();
+    }
+  }
+  else if (style === 'vignette'){
+    x.fillStyle = c1; x.fillRect(0,0,w,h);
+    const g = x.createRadialGradient(w/2, h/2, Math.min(w,h)*.22,
+                                     w/2, h/2, Math.max(w,h)*.75);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, rgba(dark, .85));
+    x.fillStyle = g; x.fillRect(0,0,w,h);
+  }
+  else { x.fillStyle = c1; x.fillRect(0,0,w,h); }
+  return c;
+}
+
+/** 取底板纹理。返回 null 表示纯色。带缓存（含分辨率与颜色） */
+function getBoardTexture(style){
+  if (!style || style === 'flat') return null;
+  const key = [style, S.bg.color, S.bg.color2, SW, SH].join('|');
+  if (bgCache.has(key)) return bgCache.get(key);
+
+  const val = BG_FULL.includes(style)
+    ? { type:'full', cv: makeFullBoard(style, SW, SH) }
+    : { type:'tile', cv: getTile(style === 'paper' ? 'paper' : style,
+                                 Math.max(8, Math.round(180 * (SW/1200)))) };
+
+  // 顺带烘一个平均色：纸厚断口的颜色要跟底板走，纹理可能和纯色差很远
+  try {
+    const t = document.createElement('canvas'); t.width = t.height = 8;
+    const tx = t.getContext('2d');
+    if (val.type === 'full') tx.drawImage(val.cv, 0, 0, 8, 8);
+    else { tx.fillStyle = tx.createPattern(val.cv, 'repeat'); tx.fillRect(0,0,8,8); }
+    const d = tx.getImageData(0,0,8,8).data;
+    let r=0,g=0,b=0;
+    for (let i=0;i<d.length;i+=4){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; }
+    const n = d.length/4;
+    val.avg = '#' + [r,g,b].map(v => Math.round(v/n).toString(16).padStart(2,'0')).join('');
+  } catch(_){ val.avg = S.bg.color; }
+
+  if (bgCache.size > 16) bgCache.clear();
+  bgCache.set(key, val);
+  return val;
+}
+
+/** 画"底板"（孔里透出的就是它）。
+ *  在孔的裁剪区内调用也能得到逐像素一致的结果 —— 因为它始终以画布原点为锚点、
+ *  不依赖任何变换。所以千万不要在带 translate/rotate 的上下文里调它。 */
+function paintBoard(c){
+  const x0 = -20, y0 = -20, w = SW+40, h = SH+40;
+  const tex = getBoardTexture(S.bg.style);
+  if (!tex){ c.fillStyle = S.bg.color; c.fillRect(x0,y0,w,h); return; }
+  if (tex.type === 'full'){
+    c.drawImage(tex.cv, 0, 0);
+  } else {
+    if (!tex.pat) tex.pat = ctx.createPattern(tex.cv, 'repeat');   // pattern 只给主 ctx 缓存
+    c.fillStyle = tex.pat;
+    c.fillRect(x0,y0,w,h);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. 立体效果核心                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 在形状内部绘制立体光影（调用前必须已 clip 到该形状）
+ * @param path      Path2D（当前坐标系下）
+ * @param id        形状 id（取填充规则）
+ * @param cx,cy,r   中心与半径（当前坐标系）
+ * @param sign      -1 = 凹（孔）  +1 = 凸（碎片）
+ * @param angDeg    光源角度（当前坐标系，0=右 90=下）
+ */
+function bevel(path, id, cx, cy, r, sign, angDeg){
+  const k = S.fx.depth;
+  const rule = fillRule(id);
+  const a  = angDeg*Math.PI/180;
+  const lx = Math.cos(a), ly = Math.sin(a);
+
+  // ---- 投影（凹槽内壁的大范围阴影 / 碎片的落影另算）----
+  if (S.fx.shadow && sign < 0){
+    const g = ctx.createLinearGradient(cx+lx*r*1.25, cy+ly*r*1.25, cx-lx*r*.5, cy-ly*r*.5);
+    g.addColorStop(0,   `rgba(0,0,0,${.42*k})`);
+    g.addColorStop(.45, `rgba(0,0,0,${.16*k})`);
+    g.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.save(); ctx.fillStyle = g; ctx.fill(path, rule); ctx.restore();
+  }
+
+  if (!S.fx.bevel && !S.fx.rim) return;
+
+  // ---- 倒角：用"沿光源方向的渐变描边"裁一半，天然得到方向性环形明暗 ----
+  if (S.fx.bevel){
+    const inner = sign < 0;
+    const g = ctx.createLinearGradient(cx-lx*r, cy-ly*r, cx+lx*r, cy+ly*r);
+    if (inner){                       // 凹：受光侧内壁暗，背光侧内壁亮
+      g.addColorStop(0,   `rgba(0,0,0,${.66*k})`);
+      g.addColorStop(.30, `rgba(0,0,0,${.17*k})`);
+      g.addColorStop(.50, 'rgba(0,0,0,0)');
+      g.addColorStop(.72, `rgba(255,255,255,${.11*k})`);
+      g.addColorStop(1,   `rgba(255,255,255,${.58*k})`);
+    } else {                          // 凸：受光侧边缘亮
+      g.addColorStop(0,   `rgba(255,255,255,${.72*k})`);
+      g.addColorStop(.28, `rgba(255,255,255,${.17*k})`);
+      g.addColorStop(.50, 'rgba(0,0,0,0)');
+      g.addColorStop(.74, `rgba(0,0,0,${.15*k})`);
+      g.addColorStop(1,   `rgba(0,0,0,${.56*k})`);
+    }
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = g;
+    const passes = [[.34,1],[.24,.8],[.15,.66],[.08,.55]];
+    for (const [w,al] of passes){
+      ctx.globalAlpha = al;
+      ctx.lineWidth = r*w;
+      ctx.stroke(path);
+    }
+    ctx.restore();
+  }
+}
+
+/** 纸厚断口：孔（或碎片）边缘露出的一圈纸芯 */
+function paperRim(path, id, r, sign){
+  const t = S.fx.thick;
+  if (!t) return;
+  // 纸芯颜色跟着底板走（纹理可能和纯色差很远，取平均色），避免死白；
+  // 透明度压低，让它像"断面"而不是塑料环
+  const tex = getBoardTexture(S.bg.style);
+  const base = shade((tex && tex.avg) || S.bg.color, .58);
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = base;
+  ctx.globalAlpha = sign < 0 ? .78 : .70;
+  ctx.lineWidth = r*t*2;          // 被 clip 裁掉一半 → 实际露出 r*t
+  ctx.stroke(path);
+  ctx.restore();
+}
+
+/** 把孔限制在图片范围内，避免大孔被画布边缘切掉 */
+function clampHole(h){
+  const IR = imgRect();
+  const r  = holeRadius(h);
+  const rx = Math.min(.45, r/IR.w), ry = Math.min(.45, r/IR.h);
+  h.u = clamp(h.u, rx, 1-rx);
+  h.v = clamp(h.v, ry, 1-ry);
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. 渲染                                                             */
+/* ------------------------------------------------------------------ */
+let rafId = 0;
+function scheduleRender(){
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => { rafId = 0; render(); });
+}
+
+function holeRadius(h){
+  return clamp(S.P.size * h.sizeMul * SW, 2.5, SW*.22);
+}
+
+function render(){
+  applyCanvasSize();
+  // 画布尺寸/分割变化后，纸面需要按新尺寸重建
+  const ir0 = imgRect();
+  if (S.img && (!paper || paper.width !== ir0.w || paper.height !== ir0.h)) buildPaper();
+
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,SW,SH);
+
+  const IR = imgRect(), SR = spillRect();
+
+  // 底板
+  paintBoard(ctx);
+
+  // 纸面（原图）
+  if (paper){
+    ctx.drawImage(paper, IR.x, IR.y);
+  } else {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,.05)';
+    ctx.fillRect(IR.x, IR.y, IR.w, IR.h);
+    ctx.fillStyle = 'rgba(255,255,255,.30)';
+    ctx.font = `500 ${Math.round(SW*.035)}px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('点击上方「上传」载入图片', IR.x+IR.w/2, IR.y+IR.h/2);
+    ctx.restore();
+  }
+
+  // ---- 打孔 ----
+  for (const h of S.holes){
+    const { x, y, r } = holePos(h);
+    const rot = (S.P.dir + h.rotOff) * Math.PI/180;
+    const path = shapePath(h.shape, x, y, r, rot);
+    const rule = fillRule(h.shape);
+
+    ctx.save();
+    ctx.clip(path, rule);
+    paintBoard(ctx);                      // 孔里透出底色（与底板像素级一致）
+    if (S.fx.rim) paperRim(path, h.shape, r, -1);
+    bevel(path, h.shape, x, y, r, -1, S.fx.light);
+    ctx.restore();
+  }
+
+  // ---- 掉落的碎片 ----
+  renderPieces(IR, SR);
+
+  // ---- 文案 ----
+  renderText(SR);
+
+  // ---- 选中高亮 ----
+  if (selHole >= 0 && S.holes[selHole]){
+    const h = S.holes[selHole];
+    const { x, y, r } = holePos(h);
+    const rot = (S.P.dir + h.rotOff) * Math.PI/180;
+    ctx.save();
+    ctx.setLineDash([Math.max(4, r*.24), Math.max(3, r*.18)]);
+    ctx.lineWidth = Math.max(2, r*.05);
+    ctx.strokeStyle = 'rgba(217,162,74,.95)';
+    ctx.shadowColor = 'rgba(0,0,0,.65)';
+    ctx.shadowBlur = 7;
+    ctx.stroke(shapePath(h.shape, x, y, r, rot));
+    ctx.restore();
+  }
+
+  drawDial();
+}
+
+function pieceGeom(i){
+  const SR = spillRect();
+  const h = S.holes[i], p = S.pieces[i];
+  if (!h || !p || p.hidden) return null;
+  const mx = SR.w*.06, my = SR.h*.10;
+  return {
+    h,
+    hidden: p.hidden,
+    x: SR.x + mx + p.u*(SR.w - 2*mx),
+    y: SR.y + my + p.v*(SR.h - 2*my),
+    // 碎片大小 = 孔洞大小 × 碎片倍率（两者解耦，可做出"孔小碎片大"的层叠）
+    r: holeRadius(h) * S.P.pieceScale,
+    rot: p.rot
+  };
+}
+
+function renderPieces(IR, SR){
+  if (!paper || !S.holes.length) return;
+  const list = [];
+  for (let i=0;i<S.holes.length;i++){
+    const g = pieceGeom(i);
+    if (g) list.push({ ...g, i });
+  }
+
+  const a  = S.fx.light*Math.PI/180;
+  const lx = Math.cos(a), ly = Math.sin(a);
+
+  for (const g of list){
+    const h = g.h;
+    const path = shapePath(h.shape, g.x, g.y, g.r, g.rot);
+
+    // 1) 底色打底 + 落影。
+    //    打底用纸面平均色而不是黑色：drawImage 的源矩形越出纸面时会被裁掉，
+    //    没铺到底的地方就会露出底色 —— 黑色会变成一块黑斑。
+    ctx.save();
+    if (S.fx.shadow){
+      ctx.shadowColor   = 'rgba(0,0,0,.38)';
+      ctx.shadowBlur    = g.r*.30;
+      ctx.shadowOffsetX = lx*g.r*.14;
+      ctx.shadowOffsetY = ly*g.r*.14;
+    }
+    ctx.fillStyle = paperBase;
+    ctx.fill(path, fillRule(h.shape));
+    ctx.restore();
+
+    // 2) 内容：把原图上这个孔的像素"抠"下来。源矩形先裁到纸面范围内，
+    //    并把相同的裁剪量用在目标矩形上，避免浏览器按比例缩放目标导致错位。
+    ctx.save();
+    ctx.clip(path, fillRule(h.shape));
+
+    const { x: hx, y: hy } = holeToPaper(h);
+    const s  = g.r*1.7;
+    const x0 = Math.max(0, hx-s), y0 = Math.max(0, hy-s);
+    const x1 = Math.min(paper.width,  hx+s), y1 = Math.min(paper.height, hy+s);
+
+    ctx.save();
+    ctx.translate(g.x, g.y);
+    ctx.rotate(g.rot);
+    ctx.translate(-hx, -hy);
+    if (x1 > x0 && y1 > y0){
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(paper, x0, y0, x1-x0, y1-y0, x0, y0, x1-x0, y1-y0);
+    }
+    ctx.restore();
+
+    if (S.fx.rim) paperRim(path, h.shape, g.r, +1);
+    // 碎片是凸起物；光源是世界坐标固定的，与碎片自身是否旋转无关
+    bevel(path, h.shape, g.x, g.y, g.r, +1, S.fx.light);
+
+    ctx.restore();
+  }
+}
+
+/** 按可用宽度折行：中日韩逐字断行，拉丁按空格断行。要求 ctx.font 已设好 */
+const CJK = '\\u2e80-\\u9fff\\uf900-\\ufaff\\uff00-\\uffef\\u3000-\\u303f';
+function wrapLines(text, maxW){
+  const out = [];
+  for (const para of String(text).split('\n')){
+    if (!para){ out.push(''); continue; }
+    const tokens = para.match(new RegExp(`[${CJK}]|[^\\s${CJK}]+|\\s+`, 'g')) || [];
+    let line = '';
+    for (const tk of tokens){
+      const test = line + tk;
+      if (line && ctx.measureText(test).width > maxW){
+        out.push(line.replace(/\s+$/,''));
+        line = tk.replace(/^\s+/,'');
+      } else line = test;
+    }
+    out.push(line.replace(/\s+$/,''));
+  }
+  return out;
+}
+
+/** 折行 + 自适应：超宽就缩字号，最多迭代 4 轮 */
+function fitText(text, fam, weight, size, maxW){
+  let s = size, lines = [];
+  for (let i=0;i<4;i++){
+    ctx.font = `${weight} ${Math.round(s)}px ${fam}`;
+    lines = wrapLines(text, maxW);
+    const w = lines.reduce((mx,l) => Math.max(mx, ctx.measureText(l).width), 0);
+    if (w <= maxW || s <= 6) break;
+    s = Math.max(6, s * (maxW/w) * .98);
+  }
+  return { lines, size: s };
+}
+
+function renderText(SR){
+  const t = S.text;
+  if (!t.title && !t.sub) return;
+
+  const maxW = SW*.92;
+  // 回退栈补齐日韩，否则文案切到日/韩会掉到默认 sans
+  const fam = t.font === 'serif'
+    ? '"Songti SC","Noto Serif SC","Yu Mincho","Hiragino Mincho ProN","Nanum Myeongjo",Georgia,serif'
+    : '-apple-system,"PingFang SC","Hiragino Sans","Malgun Gothic","Microsoft YaHei",sans-serif';
+
+  const blocks = [];
+  if (t.title) blocks.push({ text:t.title, weight:600, size:t.size*SW,      color:t.color,       lh:1.26 });
+  if (t.sub)   blocks.push({ text:t.sub,   weight:400, size:t.size*SW*.52,  color:rgba(t.color,.82), lh:1.36 });
+
+  // 逐段折行并自适应宽度
+  let totalH = 0;
+  for (const b of blocks){
+    const f = fitText(b.text, fam, b.weight, b.size, maxW);
+    b.lines = f.lines; b.size = f.size;
+    b.lineH = b.size * b.lh;
+    b.h = b.lines.length * b.lineH;
+    totalH += b.h;
+  }
+  // 整体过高（行数太多）就再等比缩一轮
+  const maxH = SR.h * .86;
+  if (totalH > maxH){
+    const k = maxH / totalH;
+    for (const b of blocks){
+      b.size *= k;
+      ctx.font = `${b.weight} ${Math.round(b.size)}px ${fam}`;
+      b.lines = wrapLines(b.text, maxW);
+      b.lineH = b.size * b.lh;
+      b.h = b.lines.length * b.lineH;
+    }
+    totalH = blocks.reduce((s,b) => s + b.h, 0);
+  }
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,.35)';
+
+  let y = SR.y + SR.h*t.pos - totalH/2;
+  for (const b of blocks){
+    ctx.fillStyle = b.color;
+    ctx.shadowBlur = b.size*.22;
+    ctx.font = `${b.weight} ${Math.round(b.size)}px ${fam}`;
+    for (const ln of b.lines){
+      ctx.fillText(ln, SW/2, y + b.lineH/2);
+      y += b.lineH;
+    }
+  }
+  ctx.restore();
+}
+
+/* ------------------------------------------------------------------ */
+/* 7. 打孔 / 碎片布局                                                 */
+/* ------------------------------------------------------------------ */
+/** 重新排布碎片。手动挪过的碎片保持原位（manual 标记） */
+function regenPieces(){
+  const n = S.holes.length;
+  if (!n){ S.pieces = []; return; }
+  const old  = S.pieces;
+  const keep = old.length === n;
+  const keepRng = S.rng;
+  const rng = mulberry32(S.seed ^ 0x9E3779B9);
+  S.rng = rng;
+  const pts = buildLayout(S.preset, n, rng, S.P);
+  S.rng = keepRng;
+  S.pieces = pts.map((p, i) => {
+    const o = keep ? old[i] : null;
+    const manual = !!(o && o.manual);
+    return {
+      u: manual ? o.u : p.u,
+      v: manual ? o.v : p.v,
+      manual,
+      hidden: !!(o && o.hidden),        // 碎片是按索引和孔配对的，删除用隐藏而不能真删
+      rot: (S.P.dir + (rng()*2-1)*S.P.tilt*120) * Math.PI/180
+    };
+  });
+}
+
+/**
+ * 重新打孔
+ * @param keepManual 是否保留手动拖拽过的位置（改滑块时 true，换样式/重打时 false）
+ */
+function punch(keepManual = true){
+  S.rng = mulberry32(S.seed);
+  const rng = S.rng;
+  const n = clamp(Math.round(S.P.count), 1, 300);
+  const pts = buildLayout(S.preset, n, rng, S.P);
+  const old = S.holes;
+  const keep = keepManual && old.length === pts.length;
+  S.holes = pts.map((p, i) => {
+    const o = keep ? old[i] : null;
+    const manual = !!(o && o.manual);
+    return {
+      u: manual ? o.u : p.u,
+      v: manual ? o.v : p.v,
+      manual,
+      sizeMul: clamp(1 + (rng()*2-1)*S.P.ratio*.62, .25, 2.4),
+      rotOff : (rng()*2-1)*S.P.tilt*120,
+      shape  : S.randomShape ? SHAPE_IDS[(rng()*SHAPE_IDS.length)|0] : S.shape
+    };
+  });
+  S.holes.forEach(clampHole);
+  regenPieces();
+  if (typeof selHole === 'number') selectHole(-1);   // 重排后旧的选中索引已失效
+  scheduleRender();
+}
+
+/** 清掉所有手动位置，完全回到算法排布 */
+function resetManual(){
+  S.holes.forEach(h => { h.manual = false; });
+  S.pieces.forEach(p => { p.manual = false; });
+  punch(false);
+}
+
+/* ------------------------------------------------------------------ */
+/* 7b. 撤销 / 重做 / 复位 —— 全量快照                                  */
+/*                                                                     */
+/* 为什么是全量快照：改滑块、换构图、换形状、重新打孔都会改变作品状态， */
+/* 只存 holes/pieces 的话这些操作全都撤不回来（之前的实现就是这个毛病）。*/
+/* 快照不含已载入的图片本体 —— 图片是素材不是状态，且体积太大。        */
+/* ------------------------------------------------------------------ */
+const UNDO_MAX = 40;
+const redoStack = [];
+
+/** 会被撤销覆盖的全部状态 */
+function snapshot(){
+  return JSON.stringify({
+    holes: S.holes, pieces: S.pieces,
+    P: S.P, preset: S.preset, shape: S.shape, randomShape: S.randomShape,
+    split: S.split, aspect: S.aspect,
+    bg: S.bg, fx: S.fx, filter: S.filter, text: S.text,
+    seed: S.seed
+  });
+}
+
+/** 改状态之前调用。注意顺序：先 commit 再改。 */
+function commit(){
+  undoStack.push(snapshot());
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoUI();
+  scheduleSave();          // 顺带把配置存到本机（内部有防抖）
+}
+
+function restore(json){
+  const s = JSON.parse(json);
+  Object.assign(S, {
+    holes: s.holes || [], pieces: s.pieces || [],
+    P: s.P, preset: s.preset, shape: s.shape, randomShape: s.randomShape,
+    split: s.split, aspect: s.aspect,
+    bg: s.bg, fx: s.fx, filter: s.filter || S.filter, text: s.text,
+    seed: s.seed
+  });
+  selectHole(-1);        // 索引可能已失效
+  buildPaper();          // 滤镜/底色变了，纸面要重烘
+  syncUI();
+  scheduleRender();
+}
+
+function undo(){
+  if (!undoStack.length) return;
+  redoStack.push(snapshot());
+  restore(undoStack.pop());
+  updateUndoUI();
+}
+function redo(){
+  if (!redoStack.length) return;
+  undoStack.push(snapshot());
+  restore(redoStack.pop());
+  updateUndoUI();
+}
+function updateUndoUI(){
+  const u = $('#btnUndo'), r = $('#btnRedo');
+  if (u) u.disabled = !undoStack.length;
+  if (r) r.disabled = !redoStack.length;
+}
+
+/** 滑块/表盘这类连续拖动：一次拖拽只压一条快照，松开后解禁 */
+const dragArmed = new Set();
+function commitOnDrag(el){
+  const arm = () => { if (!dragArmed.has(el)){ dragArmed.add(el); commit(); } };
+  el.addEventListener('pointerdown', arm);
+  el.addEventListener('keydown', arm);
+}
+window.addEventListener('pointerup', () => dragArmed.clear());
+window.addEventListener('pointercancel', () => dragArmed.clear());
+
+/** 文本框：一次聚焦期间的连续输入算一步 */
+function commitOnFocus(el){
+  el.addEventListener('focus', () => { if (!el.__armed){ el.__armed = true; commit(); } });
+  el.addEventListener('blur',  () => { el.__armed = false; });
+}
+
+/** 把所有界面控件同步到当前 S 的值（撤销/复位/载入配置之后必须调） */
+function syncUI(){
+  // 滑块
+  document.querySelectorAll('#slidersMain .sl, #slidersAdv .sl').forEach(row => {
+    const k = row.dataset.key;
+    if (!k || S.P[k] === undefined) return;
+    const inp = row.querySelector('input');
+    inp.value = S.P[k];
+    const cfg = SLIDERS.find(s => s[0] === k);
+    if (cfg) row.querySelector('.val').textContent = cfg[5](+inp.value);
+  });
+  // 构图样式 / 形状
+  document.querySelectorAll('#presets .preset').forEach(el =>
+    el.classList.toggle('on', el.dataset.id === S.preset));
+  document.querySelectorAll('#shapes .shape').forEach(el => {
+    const on = el.dataset.id === S.shape;
+    el.classList.toggle('on', on);
+    el.replaceChild(shapeIcon(el.dataset.id, 26, on ? '#e0ab48' : '#cfc7b6'), el.firstChild);
+  });
+  $('#btnRandomShape').classList.toggle('on', S.randomShape);
+  // 立体
+  document.querySelectorAll('.sw2').forEach(b =>
+    b.classList.toggle('on', !!S.fx[b.dataset.fx]));
+  $('#fxMaster').classList.toggle('on', fxAnyOn());
+  $('#fxDepth').value = S.fx.depth;
+  $('#fxDepthV').textContent = Math.round(S.fx.depth*100)+'%';
+  $('#fxThick').value = S.fx.thick;
+  $('#fxThickV').textContent = (S.fx.thick*100).toFixed(1)+'%';
+  // 影调
+  document.querySelectorAll('#filtersA .sl, #filtersB .sl').forEach(r => r.__sync && r.__sync());
+  // 背景
+  $('#bgColor').value  = S.bg.color;
+  $('#bgColor2').value = S.bg.color2;
+  document.querySelectorAll('#swatches .sw').forEach(el =>
+    el.classList.toggle('on', el.dataset.c === S.bg.color));
+  buildTextures();          // 纹理缩略图依赖当前颜色，必须重建
+  $('#split').value = S.split;
+  $('#splitV').textContent = Math.round(S.split*100)+'%';
+  document.querySelectorAll('#ratios .chip').forEach(el =>
+    el.classList.toggle('on', Math.abs(+el.dataset.v - S.aspect) < 1e-4));
+  // 文案
+  $('#txTitle').value = S.text.title;
+  $('#txSub').value   = S.text.sub;
+  $('#txColor').value = S.text.color;
+  $('#txFont').value  = S.text.font;
+  $('#txSize').value  = S.text.size;
+  $('#txSizeV').textContent = (S.text.size*100).toFixed(1)+'%';
+  $('#txPos').value   = S.text.pos;
+  $('#txPosV').textContent = Math.round(S.text.pos*100)+'%';
+  // 模式相关（会顺带刷 #hint 与药丸）
+  setMode(S.mode);
+  updateUndoUI();
+}
+
+/* 出厂默认值：在 init 跑之前抓一份快照 */
+const DEFAULTS = JSON.parse(JSON.stringify({
+  P: S.P, preset: S.preset, shape: S.shape, randomShape: S.randomShape,
+  split: S.split, aspect: S.aspect, bg: S.bg, fx: S.fx, filter: S.filter, text: S.text
+}));
+
+/** 恢复默认：参数全部回出厂，但保留已载入的图片（别让用户丢素材） */
+function resetAll(){
+  commit();
+  const d = JSON.parse(JSON.stringify(DEFAULTS));
+  Object.assign(S, {
+    P: d.P, preset: d.preset, shape: d.shape, randomShape: d.randomShape,
+    split: d.split, aspect: d.aspect, bg: d.bg, fx: d.fx, filter: d.filter, text: d.text,
+    seed: 20260912
+  });
+  buildPaper();
+  punch(false);
+  syncUI();
+  scheduleRender();
+}
+
+/* ------------------------------------------------------------------ */
+/* 8. 界面构建                                                        */
+/* ------------------------------------------------------------------ */
+
+/* --- 8.1 形状图标（直接用形状库渲染，所见即所得）--- */
+function shapeIcon(id, size, color){
+  const c = document.createElement('canvas');
+  const dpr = 2;
+  c.width = c.height = size*dpr;
+  c.style.width = c.style.height = size+'px';
+  const x = c.getContext('2d');
+  x.scale(dpr,dpr);
+  x.translate(size/2, size/2);
+  x.scale(size/2*0.86, size/2*0.86);
+  x.fillStyle = color;
+  x.fill(U[id].p, fillRule(id));
+  return c;
+}
+
+/* --- 8.2 构图样式 --- */
+function presetIcon(name, size){
+  const c = document.createElement('canvas');
+  const dpr = 2;
+  c.width = c.height = size*dpr;
+  c.style.width = c.style.height = size+'px';
+  const x = c.getContext('2d');
+  x.scale(dpr,dpr);
+  const rng = mulberry32(7);
+  const dummy = { dir:0, density:.72, scatter:0 };
+  const pts = buildLayout(name, 9, rng, dummy);
+  x.fillStyle = '#ddd6c6';
+  for (const p of pts){
+    x.beginPath();
+    x.arc(3 + p.u*(size-6), 3 + p.v*(size-6), 1.9, 0, TAU);
+    x.fill();
+  }
+  return c;
+}
+
+function buildPresets(){
+  const box = $('#presets');
+  box.innerHTML = '';
+  for (const [id,label] of LAYOUTS){
+    const b = document.createElement('button');
+    b.className = 'preset' + (id === S.preset ? ' on' : '');
+    b.dataset.id = id;
+    b.appendChild(presetIcon(id, 44));
+    const sp = document.createElement('span');
+    sp.textContent = label;
+    b.appendChild(sp);
+    b.onclick = () => {
+      commit();                     // 必须在改状态之前压快照
+      S.preset = id;
+      [...box.children].forEach(el => el.classList.toggle('on', el.dataset.id === id));
+      // 换构图样式 = 重新排布，手动位置一并清掉
+      if (S.mode === 'array') punch(false); else { regenPieces(); scheduleRender(); }
+    };
+    box.appendChild(b);
+  }
+}
+
+/* --- 8.3 形状 --- */
+function buildShapes(){
+  const box = $('#shapes');
+  box.innerHTML = '';
+  for (const [id,label] of SHAPE_LIST){
+    const b = document.createElement('button');
+    b.className = 'shape' + (id === S.shape ? ' on' : '');
+    b.dataset.id = id;
+    b.title = label;
+    b.appendChild(shapeIcon(id, 26, id === S.shape ? '#e0ab48' : '#cfc7b6'));
+    b.onclick = () => {
+      commit();
+      S.shape = id;
+      S.randomShape = false;
+      $('#btnRandomShape').classList.remove('on');
+      // 立刻应用到已有孔上
+      S.holes.forEach(h => h.shape = id);
+      [...box.children].forEach(el => {
+        const on = el.dataset.id === id;
+        el.classList.toggle('on', on);
+        el.replaceChild(shapeIcon(el.dataset.id, 26, on ? '#e0ab48' : '#cfc7b6'), el.firstChild);
+      });
+      scheduleRender();
+    };
+    box.appendChild(b);
+  }
+}
+
+/* --- 8.4 滑块（主控 2 个 + 高级 4 个）--- */
+const SLIDERS = [
+  ['count',  '数量', 1, 200, 1,      v => Math.round(v),          'main'],
+  ['size',   '大小', .012, .15, .001, v => (v*100).toFixed(1)+'%','main'],
+  ['density','密度', 0, 1, .01,      v => Math.round(v*100)+'%',  'adv'],
+  ['dir',    '方向', 0, 360, 1,      v => Math.round(v)+'°',      'adv'],
+  ['ratio',  '比例', 0, 1, .01,      v => Math.round(v*100)+'%',  'adv'],
+  ['scatter','错落', 0, 1, .01,      v => Math.round(v*100)+'%',  'adv'],
+  ['tilt',   '歪斜', 0, 1, .01,      v => Math.round(v*100)+'%',  'adv'],
+  ['pieceScale','碎片', .3, 2, .01,  v => v.toFixed(2)+'×',      'adv']
+];
+function buildSliders(){
+  $('#slidersMain').innerHTML = '';
+  $('#slidersAdv').innerHTML  = '';
+  for (const [key,label,min,max,step,fmt,group] of SLIDERS){
+    const row = document.createElement('div');
+    row.className = 'sl';
+    row.dataset.key = key;
+    row.innerHTML = `<label>${label}</label>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${S.P[key]}">
+      <span class="val"></span>`;
+    const inp = row.querySelector('input');
+    const val = row.querySelector('.val');
+    const sync = () => { val.textContent = fmt(+inp.value); };
+    sync();
+    commitOnDrag(inp);              // 一次连续拖动 = 一步撤销
+    inp.oninput = () => {
+      S.P[key] = +inp.value;
+      sync();
+      if (S.mode === 'array') punch(); else { regenPieces(); scheduleRender(); }
+    };
+    $(group === 'main' ? '#slidersMain' : '#slidersAdv').appendChild(row);
+  }
+}
+
+/* --- 8.4b 分段控件的滑块指示器 --- */
+let pillInit = false;
+function movePill(){
+  const btn  = document.querySelector('#seg button.on');
+  const pill = $('#segPill');
+  if (!btn || !pill) return;
+  const place = () => {
+    pill.style.left  = btn.offsetLeft + 'px';
+    pill.style.width = btn.offsetWidth + 'px';
+  };
+  if (!pillInit){                 // 首帧带 transition 的话能看见药丸从 0 滑过来
+    const seg = $('#seg');
+    seg.classList.add('no-trans');
+    place();
+    requestAnimationFrame(() => { seg.classList.remove('no-trans'); pillInit = true; });
+    return;
+  }
+  place();
+}
+window.addEventListener('resize', movePill);
+
+/* --- 8.4c 高级设置折叠 --- */
+function setAdv(open){
+  $('#adv').classList.toggle('open', open);
+  $('#advToggle').classList.toggle('open', open);
+  $('#advToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('#adv').inert = !open;        // 收起时别让 Tab 焦点掉进看不见的控件
+}
+$('#advToggle').onclick = () => {
+  setAdv(!$('#adv').classList.contains('open'));
+  setTimeout(movePill, 320);
+};
+
+/* --- 8.5 光源表盘 --- */
+const dialCv = $('#dial'), dialCtx = dialCv.getContext('2d');
+function drawDial(){
+  const d = dialCv.width, R = d/2, cxp = R, cyp = R;
+  dialCtx.setTransform(1,0,0,1,0,0);
+  dialCtx.clearRect(0,0,d,d);
+
+  dialCtx.beginPath();
+  dialCtx.arc(cxp, cyp, R-3, 0, TAU);
+  dialCtx.fillStyle = '#1e1b16';
+  dialCtx.fill();
+  dialCtx.strokeStyle = '#2c2820';
+  dialCtx.lineWidth = 2;
+  dialCtx.stroke();
+
+  const a = S.fx.light*Math.PI/180;
+  // 内圈渐显光源方向
+  const g = dialCtx.createLinearGradient(
+    cxp + Math.cos(a)*(R-6), cyp + Math.sin(a)*(R-6),
+    cxp - Math.cos(a)*(R-6), cyp - Math.sin(a)*(R-6)
+  );
+  g.addColorStop(0, 'rgba(224,171,72,.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  dialCtx.beginPath();
+  dialCtx.arc(cxp, cyp, R-6, 0, TAU);
+  dialCtx.fillStyle = g;
+  dialCtx.fill();
+
+  // 光源圆点
+  const px = cxp + Math.cos(a)*(R-18), py = cyp + Math.sin(a)*(R-18);
+  dialCtx.beginPath();
+  dialCtx.arc(px, py, 7, 0, TAU);
+  dialCtx.fillStyle = '#ffe6b0';
+  dialCtx.fill();
+
+  // 中心的小球（用来示意受光面）
+  const g2 = dialCtx.createRadialGradient(
+    cxp - Math.cos(a)*3, cyp - Math.sin(a)*3, 1,
+    cxp, cyp, 13
+  );
+  g2.addColorStop(0, '#efe7d6');
+  g2.addColorStop(1, '#5a5346');
+  dialCtx.beginPath();
+  dialCtx.arc(cxp, cyp, 12, 0, TAU);
+  dialCtx.fillStyle = g2;
+  dialCtx.fill();
+}
+
+(function dialDrag(){
+  let dragging = false;
+  const set = e => {
+    const r = dialCv.getBoundingClientRect();
+    const x = e.clientX - r.left - r.width/2;
+    const y = e.clientY - r.top  - r.height/2;
+    S.fx.light = ((Math.atan2(y,x)*180/Math.PI) + 360) % 360;
+    scheduleRender();
+  };
+  dialCv.addEventListener('pointerdown', e => {
+    commit();                       // 一次拖动 = 一步撤销
+    dragging = true; dialCv.setPointerCapture(e.pointerId); set(e);
+  });
+  dialCv.addEventListener('pointermove', e => { if (dragging) set(e); });
+  dialCv.addEventListener('pointerup',   () => dragging = false);
+  dialCv.addEventListener('pointercancel',()=> dragging = false);
+})();
+
+/* --- 8.6 立体开关 --- */
+const fxAnyOn = () => S.fx.bevel || S.fx.rim || S.fx.shadow;
+document.querySelectorAll('.sw2').forEach(b => {
+  b.onclick = () => {
+    commit();
+    const k = b.dataset.fx;
+    S.fx[k] = !S.fx[k];
+    b.classList.toggle('on', S.fx[k]);
+    $('#fxMaster').classList.toggle('on', fxAnyOn());
+    scheduleRender();
+  };
+});
+commitOnDrag($('#fxDepth'));
+commitOnDrag($('#fxThick'));
+$('#fxDepth').oninput = e => { S.fx.depth = +e.target.value; $('#fxDepthV').textContent = Math.round(S.fx.depth*100)+'%'; scheduleRender(); };
+$('#fxThick').oninput = e => { S.fx.thick = +e.target.value; $('#fxThickV').textContent = (S.fx.thick*100).toFixed(1)+'%'; scheduleRender(); };
+
+/** 总开关：关就三种全关，开就三种全开 */
+function setAllFx(on){
+  S.fx.bevel = S.fx.rim = S.fx.shadow = on;
+  document.querySelectorAll('.sw2').forEach(b => b.classList.toggle('on', on));
+  $('#fxMaster').classList.toggle('on', on);
+  scheduleRender();
+}
+$('#fxMaster').onclick = () => { commit(); setAllFx(!fxAnyOn()); };
+$('#btnResetPos').onclick = () => { commit(); resetManual(); };
+$('#btnResetAll').onclick = () => resetAll();
+
+/* --- 单个孔：选中后的独立微调 --- */
+commitOnDrag($('#selSize'));
+commitOnDrag($('#selRot'));
+$('#selSize').oninput = e => {
+  const h = S.holes[selHole]; if (!h) return;
+  h.sizeMul = +e.target.value;
+  $('#selSizeV').textContent = h.sizeMul.toFixed(2)+'×';
+  clampHole(h);                    // 别让它撑出图片区
+  scheduleRender();
+};
+$('#selRot').oninput = e => {
+  const h = S.holes[selHole]; if (!h) return;
+  h.rotOff = +e.target.value;
+  $('#selRotV').textContent = Math.round(h.rotOff)+'°';
+  scheduleRender();
+};
+$('#selDelete').onclick   = deleteSelected;
+$('#selDeselect').onclick = () => selectHole(-1);
+$('#btnRandomShape').onclick = e => {
+  commit();
+  S.randomShape = !S.randomShape;
+  e.currentTarget.classList.toggle('on', S.randomShape);
+  if (S.randomShape) S.holes.forEach(h => h.shape = SHAPE_IDS[(S.rng()*SHAPE_IDS.length)|0]);
+  else S.holes.forEach(h => h.shape = S.shape);
+  scheduleRender();
+};
+
+/* --- 8.7 模式 / 撤销 / 重打 --- */
+const MODE_HINT = {
+  array : '拖动任意孔或碎片可手动微调 · 双击删除',
+  draw  : '在图片上逐个点击打孔 · 拖动可移动 · 双击删除',
+  stroke: '按住拖动，孔沿笔迹连续打出 · 密度控制孔的疏密'
+};
+/* 底板纹理清单（缩略图由 textureIcon 实时生成，不是写死的图片） */
+const TEX_LIST = [
+  ['flat','纯色'], ['gradient','渐变'], ['radial','径向'], ['paper','纸纹'],
+  ['grain','颗粒'], ['linen','亚麻'], ['dots','网点'], ['stripes','斜纹'],
+  ['watercolor','水彩'], ['marble','流纹'], ['speck','斑点'], ['vignette','暗角']
+];
+
+const MODE_OF = { mArray:'array', mDraw:'draw', mStroke:'stroke' };
+function setMode(m){
+  S.mode = m;
+  for (const id in MODE_OF) $('#'+id).classList.toggle('on', MODE_OF[id] === m);
+  // 构图样式只在预设模式下有意义；数量同理
+  $('#secPreset').style.display = (m === 'array') ? '' : 'none';
+  const cnt = document.querySelector('#slidersMain .sl[data-key=count]');
+  if (cnt) cnt.style.display = (m === 'array') ? '' : 'none';
+  $('#hint').textContent = MODE_HINT[m] || '';
+  movePill();
+}
+$('#mDraw').onclick   = () => setMode('draw');
+$('#mStroke').onclick = () => setMode('stroke');
+$('#mArray').onclick  = () => { commit(); setMode('array'); punch(); };
+// 模式本身是工具状态，不进撤销栈；但切模式会重新排布，所以这里也要压一条
+$('#btnUndo').onclick    = undo;
+$('#btnRedo').onclick    = redo;
+$('#btnRepunch').onclick = () => { commit(); S.seed = (Math.random()*1e9)|0; punch(false); };
+
+/* --- 8.8 背景面板 --- */
+const SWATCHES = ['#a8792f','#2f3a44','#e8e2d6','#1a1a1a','#7d4b2a','#3f5d4a','#c9b8a0','#5b4a6b','#b03a2e','#e5c07b'];
+function buildSwatches(){
+  const box = $('#swatches');
+  box.innerHTML = '';
+  for (const c of SWATCHES){
+    const b = document.createElement('button');
+    b.className = 'sw' + (c === S.bg.color ? ' on' : '');
+    b.style.background = c;
+    b.dataset.c = c;
+    b.onclick = () => {
+      commit();
+      S.bg.color = c;
+      $('#bgColor').value = c;
+      S.bg.color2 = shade(c, -.35);
+      $('#bgColor2').value = S.bg.color2;
+      [...box.children].forEach(el => el.classList.toggle('on', el.dataset.c === c));
+      scheduleRender();
+    };
+    box.appendChild(b);
+  }
+}
+$('#bgColor').oninput  = e => { S.bg.color  = e.target.value; scheduleRender(); };
+$('#bgColor2').oninput = e => { S.bg.color2 = e.target.value; scheduleRender(); };
+commitOnDrag($('#bgColor'));
+commitOnDrag($('#bgColor2'));
+/* 底板纹理：用横向图标选择器（每个图标是该纹理的实时缩略图） */
+function textureIcon(style, size){
+  const c = document.createElement('canvas');
+  const dpr = 2;
+  c.width = c.height = size*dpr;
+  c.style.width = c.style.height = size+'px';
+  const x = c.getContext('2d');
+  x.scale(dpr, dpr);
+  x.fillStyle = S.bg.color;
+  x.fillRect(0, 0, size, size);
+  if (style !== 'flat'){
+    const tex = getBoardTexture(style);
+    if (tex){
+      if (tex.type === 'full'){
+        // 缩略图：把整块纹理缩下来画，不能直接铺（那是 SW×SH 的）
+        x.drawImage(tex.cv, 0, 0, SW, SH, 0, 0, size, size);
+      } else {
+        x.fillStyle = x.createPattern(tex.cv, 'repeat');
+        x.fillRect(0, 0, size, size);
+      }
+    }
+  }
+  return c;
+}
+
+function buildTextures(){
+  const box = $('#texRow');
+  box.innerHTML = '';
+  for (const [id, label] of TEX_LIST){
+    const b = document.createElement('button');
+    b.className = 'preset tex' + (id === S.bg.style ? ' on' : '');
+    b.dataset.id = id;
+    b.title = label;
+    b.appendChild(textureIcon(id, 40));
+    const sp = document.createElement('span');
+    sp.textContent = label;
+    b.appendChild(sp);
+    b.onclick = () => {
+      commit();
+      S.bg.style = id;
+      [...box.children].forEach(el => el.classList.toggle('on', el.dataset.id === id));
+      scheduleRender();
+    };
+    box.appendChild(b);
+  }
+}
+
+const RATIOS = [['4:5',1.25],['1:1',1],['3:4',1.3333],['9:16',1.7778],['16:9',.5625]];
+function buildRatios(){
+  const box = $('#ratios');
+  box.innerHTML = '';
+  for (const [label, v] of RATIOS){
+    const b = document.createElement('button');
+    b.className = 'chip' + (Math.abs(v-S.aspect) < 1e-4 ? ' on' : '');
+    b.textContent = label;
+    b.dataset.v = v;
+    b.onclick = () => {
+      commit();
+      S.aspect = v;
+      [...box.children].forEach(el => el.classList.toggle('on', +el.dataset.v === v));
+      buildPaper();
+      scheduleRender();
+    };
+    box.appendChild(b);
+  }
+}
+commitOnDrag($('#split'));
+$('#split').oninput = e => {
+  S.split = +e.target.value;
+  $('#splitV').textContent = Math.round(S.split*100)+'%';
+  buildPaper();
+  scheduleRender();
+};
+
+/* --- 8.9 文案面板 --- */
+$('#txTitle').oninput = e => { S.text.title = e.target.value; scheduleRender(); };
+$('#txSub').oninput   = e => { S.text.sub   = e.target.value; scheduleRender(); };
+$('#txColor').oninput = e => { S.text.color = e.target.value; scheduleRender(); };
+$('#txFont').onchange = e => { commit(); S.text.font = e.target.value; scheduleRender(); };
+// 文本框：一次聚焦期间的连续输入算一步撤销
+commitOnFocus($('#txTitle'));
+commitOnFocus($('#txSub'));
+commitOnDrag($('#txColor'));
+commitOnDrag($('#txSize'));
+commitOnDrag($('#txPos'));
+$('#txSize').oninput  = e => { S.text.size = +e.target.value; $('#txSizeV').textContent = (S.text.size*100).toFixed(1)+'%'; scheduleRender(); };
+$('#txPos').oninput   = e => { S.text.pos  = +e.target.value; $('#txPosV').textContent  = Math.round(S.text.pos*100)+'%'; scheduleRender(); };
+
+/* --- 8.9b 影调：调色 + 叠加材质 --- */
+const FILTERS = [
+  ['bright',   '亮度',   .4, 1.8, .01, v => v.toFixed(2)+'×', 'A'],
+  ['contrast', '对比度', .4, 1.8, .01, v => v.toFixed(2)+'×', 'A'],
+  ['saturate', '饱和度', 0,  2,   .01, v => v.toFixed(2)+'×', 'A'],
+  ['warmth',   '色温',   -1, 1,   .01, v => (v>0?'+':'')+Math.round(v*100), 'A'],
+  ['fade',     '褪色',   0,  1,   .01, v => Math.round(v*100)+'%', 'A'],
+  ['sepia',    '泛黄',   0,  1,   .01, v => Math.round(v*100)+'%', 'A'],
+  ['blur',     '模糊',   0,  6,   .1,  v => v.toFixed(1)+'px', 'A'],
+  ['grain',    '颗粒',   0,  1,   .01, v => Math.round(v*100)+'%', 'B'],
+  ['vignette', '暗角',   0,  1,   .01, v => Math.round(v*100)+'%', 'B'],
+  ['scanline', '扫描线', 0,  1,   .01, v => Math.round(v*100)+'%', 'B'],
+  ['halftone', '半调网点', 0, 1,  .01, v => Math.round(v*100)+'%', 'B']
+];
+
+/* 滤镜要重烘纸面，比较贵 —— 用 rAF 合并，拖滑块时不至于卡 */
+let paperRaf = 0;
+function schedulePaper(){
+  if (paperRaf) return;
+  paperRaf = requestAnimationFrame(() => {
+    paperRaf = 0;
+    buildPaper();
+    render();
+  });
+}
+
+function buildFilters(){
+  $('#filtersA').innerHTML = '';
+  $('#filtersB').innerHTML = '';
+  for (const [k, label, min, max, step, fmt, group] of FILTERS){
+    const row = document.createElement('div');
+    row.className = 'sl';
+    row.dataset.fkey = k;
+    row.innerHTML = `<label>${label}</label>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${S.filter[k]}">
+      <span class="val"></span>`;
+    const inp = row.querySelector('input'), val = row.querySelector('.val');
+    val.textContent = fmt(+inp.value);
+    commitOnDrag(inp);                     // 一次拖动 = 一步撤销
+    inp.oninput = () => {
+      S.filter[k] = +inp.value;
+      val.textContent = fmt(+inp.value);
+      schedulePaper();
+    };
+    row.__sync = () => {
+      inp.value = S.filter[k];
+      val.textContent = fmt(+inp.value);
+    };
+    $(group === 'A' ? '#filtersA' : '#filtersB').appendChild(row);
+  }
+}
+
+$('#btnResetTone').onclick = () => {
+  commit();
+  Object.assign(S.filter, JSON.parse(JSON.stringify(DEFAULTS.filter)));
+  document.querySelectorAll('#filtersA .sl, #filtersB .sl').forEach(r => r.__sync && r.__sync());
+  schedulePaper();
+};
+
+/* --- 8.10b 配置持久化：自动保存 / 命名预设 / JSON 导入导出 --- */
+const CFG_KEY    = 'cutmoon.config.v1';
+const PRESET_KEY = 'cutmoon.presets.v1';
+
+let toastTimer = 0;
+function toast(msg){
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 1900);
+}
+
+/** 可保存的"配置"——不含 holes/pieces，那是作品不是配置 */
+function currentConfig(){
+  return {
+    v: 1,
+    P: JSON.parse(JSON.stringify(S.P)),
+    preset: S.preset, shape: S.shape, randomShape: S.randomShape, mode: S.mode,
+    split: S.split, aspect: S.aspect,
+    bg: JSON.parse(JSON.stringify(S.bg)),
+    fx: JSON.parse(JSON.stringify(S.fx)),
+    filter: JSON.parse(JSON.stringify(S.filter)),
+    text: JSON.parse(JSON.stringify(S.text))
+  };
+}
+
+/** 用 Object.assign 逐项合并，这样以后新增参数时旧配置也不会缺字段 */
+function applyConfig(c){
+  if (!c || typeof c !== 'object') return;
+  if (c.P)      Object.assign(S.P, c.P);
+  if (c.bg)     Object.assign(S.bg, c.bg);
+  if (c.fx)     Object.assign(S.fx, c.fx);
+  if (c.filter) Object.assign(S.filter, c.filter);
+  if (c.text)   Object.assign(S.text, c.text);
+  if (c.preset) S.preset = c.preset;
+  if (c.shape)  S.shape  = c.shape;
+  if (c.mode)   S.mode   = c.mode;
+  if (typeof c.split  === 'number') S.split  = c.split;
+  if (typeof c.aspect === 'number') S.aspect = c.aspect;
+  if (typeof c.randomShape === 'boolean') S.randomShape = c.randomShape;
+  buildPaper();
+  punch(false);
+  syncUI();
+  scheduleRender();
+}
+
+/* 自动保存（防抖：拖滑块时别疯狂写 localStorage） */
+let saveTimer = 0;
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(currentConfig())); } catch(_){}
+  }, 600);
+}
+function loadSaved(){
+  try {
+    const raw = localStorage.getItem(CFG_KEY);
+    if (raw) applyConfig(JSON.parse(raw));
+  } catch(_){}
+}
+
+const readPresets  = () => { try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '{}'); } catch(_){ return {}; } };
+const writePresets = o => { try { localStorage.setItem(PRESET_KEY, JSON.stringify(o)); } catch(_){} };
+
+function refreshCfgList(){
+  const sel = $('#cfgList');
+  const names = Object.keys(readPresets());
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = '';
+  ph.textContent = names.length ? '选择已保存的配置…' : '（还没有保存过配置）';
+  sel.appendChild(ph);
+  for (const n of names){
+    const op = document.createElement('option');
+    op.value = n; op.textContent = n;
+    sel.appendChild(op);
+  }
+}
+
+$('#cfgSave').onclick = () => {
+  const o = readPresets();
+  const name = ($('#cfgName').value || '').trim() || ('配置 ' + (Object.keys(o).length + 1));
+  o[name] = currentConfig();
+  writePresets(o);
+  refreshCfgList();
+  $('#cfgList').value = name;
+  $('#cfgName').value = '';
+  toast('已保存「' + name + '」');
+};
+$('#cfgLoad').onclick = () => {
+  const n = $('#cfgList').value, o = readPresets();
+  if (!n || !o[n]){ toast('先选一套配置'); return; }
+  commit();
+  applyConfig(o[n]);
+  toast('已载入「' + n + '」');
+};
+$('#cfgDel').onclick = () => {
+  const n = $('#cfgList').value, o = readPresets();
+  if (!n || !o[n]){ toast('先选一套配置'); return; }
+  delete o[n];
+  writePresets(o);
+  refreshCfgList();
+  toast('已删除「' + n + '」');
+};
+$('#cfgExport').onclick = () => {
+  const blob = new Blob([JSON.stringify(currentConfig(), null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'cutmoon-config.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast('配置已导出');
+};
+$('#cfgImport').onclick = () => $('#cfgFile').click();
+$('#cfgFile').onchange = e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const c = JSON.parse(rd.result);
+      commit();
+      applyConfig(c);
+      toast('配置已导入');
+    } catch(_){ toast('导入失败：不是合法的配置文件'); }
+  };
+  rd.readAsText(f);
+  e.target.value = '';
+};
+
+/* --- 8.10 标签页 --- */
+document.querySelectorAll('.tab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+    document.querySelectorAll('.pane').forEach(p =>
+      p.classList.toggle('on', p.id === 'pane-' + t.dataset.tab));
+  };
+});
+
+/* ------------------------------------------------------------------ */
+/* 9. 画布交互（绘制模式）                                            */
+/* ------------------------------------------------------------------ */
+function toCanvas(e){
+  const r = stage.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) / r.width  * SW,
+    y: (e.clientY - r.top ) / r.height * SH
+  };
+}
+const INSET = .022;
+
+/** 孔的归一化坐标 → 画布坐标 */
+function holePos(h){
+  const IR = imgRect();
+  return {
+    x: IR.x + (INSET + h.u*(1-2*INSET))*IR.w,
+    y: IR.y + (INSET + h.v*(1-2*INSET))*IR.h,
+    r: holeRadius(h)
+  };
+}
+/** 画布坐标 → 孔的归一化坐标 */
+function holeUV(x,y){
+  const IR = imgRect();
+  return { u: (x/IR.w - INSET)/(1-2*INSET), v: (y/IR.h - INSET)/(1-2*INSET) };
+}
+/** 孔在"纸面"（paper 画布）里的中心坐标 —— 必须与 holePos 用同一套 inset 映射，
+ *  否则碎片抠到的像素和它出身的那个孔对不上 */
+function holeToPaper(h){
+  return {
+    x: (INSET + h.u*(1-2*INSET))*paper.width,
+    y: (INSET + h.v*(1-2*INSET))*paper.height
+  };
+}
+
+/** 碎片的归一化坐标 → 画布坐标（与 pieceGeom 保持一致） */
+function pieceUV(x,y){
+  const SR = spillRect(), mx = SR.w*.06, my = SR.h*.10;
+  return { u: (x - SR.x - mx)/(SR.w - 2*mx), v: (y - SR.y - my)/(SR.h - 2*my) };
+}
+
+/** 命中测试：点在哪个孔 / 哪块碎片上 */
+function hitTest(p){
+  for (let i=S.holes.length-1;i>=0;i--){
+    const g = holePos(S.holes[i]);
+    if (Math.hypot(p.x-g.x, p.y-g.y) <= Math.max(g.r, 14)*1.1) return { kind:'hole', i };
+  }
+  for (let i=S.pieces.length-1;i>=0;i--){
+    const g = pieceGeom(i);
+    if (!g) continue;
+    if (Math.hypot(p.x-g.x, p.y-g.y) <= Math.max(g.r, 14)*1.1) return { kind:'piece', i };
+  }
+  return null;
+}
+
+/* ---- 单个孔的选中与独立微调 -------------------------------------- */
+let selHole = -1;
+
+function selectHole(i){
+  selHole = (i >= 0 && S.holes[i]) ? i : -1;
+  const box = $('#selBox');
+  if (!box) return;
+  if (selHole < 0){ box.style.display = 'none'; }
+  else {
+    box.style.display = '';
+    const h = S.holes[selHole];
+    const sz = $('#selSize'), rt = $('#selRot');
+    sz.value = h.sizeMul;  $('#selSizeV').textContent = (+sz.value).toFixed(2)+'×';
+    rt.value = h.rotOff;   $('#selRotV').textContent  = Math.round(+rt.value)+'°';
+  }
+  scheduleRender();
+}
+
+function deleteSelected(){
+  if (selHole < 0 || !S.holes[selHole]) return;
+  commit();
+  S.holes.splice(selHole, 1);
+  S.pieces.splice(selHole, 1);     // 按索引配对，必须一起删
+  selHole = -1;
+  selectHole(-1);
+  scheduleRender();
+}
+
+let drag = null;                                    // { kind, i, moved }
+const STROKE = { active:false, last:null };         // 轨迹绘制状态
+const MAX_HOLES = 800;
+
+/**
+ * 往图片上加一个孔，并同步补一块碎片。
+ * 这里刻意不复用 regenPieces()：逐个添加时整体重排会让已落下的碎片乱跳。
+ */
+function addHoleAt(x, y){
+  const IR = imgRect();
+  if (y < IR.y || y > IR.y + IR.h) return false;   // 必须在图片区内
+  if (S.holes.length >= MAX_HOLES) return false;   // 上限：返回 false 让调用方别建 drag
+  const uv = holeUV(x, y);
+  const rng = S.rng;
+  S.holes.push({
+    u: clamp(uv.u,.01,.99), v: clamp(uv.v,.01,.99),
+    manual: true,
+    sizeMul: clamp(1 + (rng()*2-1)*S.P.ratio*.62, .25, 2.4),
+    rotOff : (rng()*2-1)*S.P.tilt*120,
+    shape  : S.randomShape ? SHAPE_IDS[(rng()*SHAPE_IDS.length)|0] : S.shape
+  });
+  clampHole(S.holes[S.holes.length-1]);
+  // 碎片位置：按当前密度做一次散点采样（保持既有碎片不动）
+  const s = .26 + S.P.density*.55;
+  S.pieces.push({
+    u: clamp(.5 + (rng()+rng()+rng()-1.5)*s, .02, .98),
+    v: clamp(.5 + (rng()+rng()+rng()-1.5)*s, .02, .98),
+    manual: false, hidden: false,
+    rot: (S.P.dir + (rng()*2-1)*S.P.tilt*120) * Math.PI/180
+  });
+  return true;
+}
+
+/** 轨迹模式下两个孔之间的间距（密度越高越密） */
+function strokeSpacing(){
+  const r = clamp(S.P.size*SW, 2.5, SW*.22);
+  return Math.max(r*.55, r*(2.6 - S.P.density*1.9));
+}
+
+/** 把笔迹从上一个落点插值推进到当前点，沿路按间距打孔 */
+function strokeTo(x, y){
+  const IR = imgRect();
+  x = clamp(x, 0, SW);
+  y = clamp(y, IR.y, IR.y + IR.h);
+  if (!STROKE.last){ STROKE.last = { x, y }; addHoleAt(x, y); return; }
+
+  const dx = x - STROKE.last.x, dy = y - STROKE.last.y;
+  const d  = Math.hypot(dx, dy);
+  const sp = strokeSpacing();
+  if (d < sp) return;
+
+  const n = Math.floor(d / sp);
+  for (let i=1; i<=n; i++){
+    addHoleAt(STROKE.last.x + dx*(i*sp/d), STROKE.last.y + dy*(i*sp/d));
+  }
+  const t = n*sp/d;
+  STROKE.last = { x: STROKE.last.x + dx*t, y: STROKE.last.y + dy*t };
+}
+
+stage.addEventListener('pointerdown', e => {
+  if (!paper) return;
+  const p = toCanvas(e);
+
+  // 轨迹模式：在图片区落笔即起笔；在底色区仍然只拖碎片
+  if (S.mode === 'stroke'){
+    const IRs = imgRect();
+    if (p.y > IRs.y + IRs.h){
+      const hitP = hitTest(p);
+      if (hitP){
+        commit();
+        drag = { ...hitP, moved:false };
+        stage.setPointerCapture(e.pointerId);
+        stage.style.cursor = 'grabbing';
+      }
+      return;
+    }
+    commit();
+    STROKE.active = true;
+    STROKE.last = null;
+    strokeTo(p.x, p.y);
+    stage.setPointerCapture(e.pointerId);
+    scheduleRender();
+    return;
+  }
+
+  // 抓到已有的孔 / 碎片 —— 所有模式下都能拖
+  const hit = hitTest(p);
+  if (hit){
+    commit();
+    drag = { ...hit, moved:false };
+    stage.setPointerCapture(e.pointerId);
+    stage.style.cursor = 'grabbing';
+    return;
+  }
+
+  // 空白处：只有「点选」模式才落新孔
+  if (S.mode !== 'draw'){ selectHole(-1); return; }   // 点空白 = 取消选中
+  const IR = imgRect();
+  if (p.y > IR.y + IR.h) return;              // 落点要在图片区域内
+
+  commit();
+  if (!addHoleAt(p.x, p.y)){       // 没打成功（超出图片区或已达上限）
+    undoStack.pop();               // 快照白压了，撤掉
+    return;                        // 且绝不能建 drag —— 否则会去拖上一个孔
+  }
+  drag = { kind:'hole', i:S.holes.length-1, moved:true };
+  stage.setPointerCapture(e.pointerId);
+  scheduleRender();
+});
+
+stage.addEventListener('pointermove', e => {
+  const p = toCanvas(e);
+
+  if (STROKE.active){ strokeTo(p.x, p.y); scheduleRender(); return; }
+
+  if (!drag){
+    // 悬停反馈
+    if (paper) stage.style.cursor = hitTest(p) ? 'grab'
+                              : (S.mode === 'array' ? 'default' : 'crosshair');
+    return;
+  }
+
+  if (drag.kind === 'hole'){
+    const h = S.holes[drag.i];
+    if (!h) return;
+    const uv = holeUV(p.x, p.y);
+    h.u = clamp(uv.u, .01, .99);
+    h.v = clamp(uv.v, .01, .99);
+    clampHole(h);
+    h.manual = true;
+  } else {
+    const pc = S.pieces[drag.i];
+    if (!pc) return;
+    const uv = pieceUV(p.x, p.y);
+    pc.u = clamp(uv.u, -.06, 1.06);          // 允许探出底色区边缘一点
+    pc.v = clamp(uv.v, -.06, 1.06);
+    pc.manual = true;
+  }
+  drag.moved = true;
+  scheduleRender();
+});
+
+function endDrag(e){
+  if (STROKE.active){ STROKE.active = false; STROKE.last = null; }
+  if (drag){
+    if (!drag.moved){
+      // 没拖动 = 一次点击：撤掉刚才那次快照，并把它当成"选中/取消选中"
+      undoStack.pop();
+      updateUndoUI();
+      selectHole(drag.kind === 'hole' ? drag.i : -1);
+    } else if (drag.kind === 'hole'){
+      selectHole(drag.i);           // 拖完也顺手选中，方便接着微调
+    }
+    drag = null;
+  }
+  try { stage.releasePointerCapture(e.pointerId); } catch(_){}
+  stage.style.cursor = S.mode === 'array' ? 'default' : 'crosshair';
+  scheduleRender();
+}
+stage.addEventListener('pointerup', endDrag);
+stage.addEventListener('pointercancel', endDrag);
+
+/* 双击删除一个孔或一块碎片（轨迹模式下连点本来就在打孔，不参与） */
+stage.addEventListener('dblclick', e => {
+  if (S.mode === 'stroke') return;
+  const hit = hitTest(toCanvas(e));
+  if (!hit) return;
+  commit();
+  if (hit.kind === 'hole'){
+    // 孔与碎片按索引配对，两边一起删才能保持对应关系
+    S.holes.splice(hit.i,1);
+    S.pieces.splice(hit.i,1);
+  } else {
+    S.pieces[hit.i].hidden = true;
+  }
+  scheduleRender();
+});
+
+/* ------------------------------------------------------------------ */
+/* 10. 载入 / 导出                                                     */
+/* ------------------------------------------------------------------ */
+$('#btnUpload').onclick = () => $('#file').click();
+$('#file').onchange = e => { if (e.target.files[0]) loadFile(e.target.files[0]); };
+
+function loadFile(f){
+  if (!f.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => {
+    S.img = im;
+    URL.revokeObjectURL(url);
+    buildPaper();
+    if (!S.holes.length) punch();
+    scheduleRender();
+  };
+  im.onerror = () => URL.revokeObjectURL(url);
+  im.src = url;
+}
+
+/* 拖拽载入 */
+const dropEl = $('#drop');
+['dragenter','dragover'].forEach(t => document.addEventListener(t, e => {
+  e.preventDefault(); dropEl.classList.add('on');
+}));
+['dragleave','drop'].forEach(t => document.addEventListener(t, e => {
+  if (t === 'dragleave' && e.relatedTarget) return;
+  dropEl.classList.remove('on');
+}));
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+/* 粘贴载入 */
+document.addEventListener('paste', e => {
+  for (const it of e.clipboardData.items){
+    if (it.type.startsWith('image/')){ loadFile(it.getAsFile()); break; }
+  }
+});
+
+/* 导出 */
+const BASE_W = 1200;
+function exportPNG(scale){
+  if (!paper){ alert('先上传一张图片吧'); return; }
+  SW = Math.round(BASE_W * scale);
+  render();                              // render 会自动按新尺寸重建纸面并重绘
+  stage.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cutmoon-${S.seed}-${scale}x.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    SW = BASE_W;                         // 还原到屏幕预览分辨率
+    render();
+  }, 'image/png');
+}
+$('#btnExport').onclick = () => exportPNG(2);
+$('#exp1').onclick = () => exportPNG(1);
+$('#exp2').onclick = () => exportPNG(2);
+$('#exp3').onclick = () => exportPNG(3);
+
+/* 快捷键 */
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  const meta = e.ctrlKey || e.metaKey;
+  const k = e.key.toLowerCase();
+
+  // 撤销/重做在任何地方都要能用，包括光标在输入框里
+  if (meta && k === 'z'){
+    e.preventDefault();
+    e.shiftKey ? redo() : undo();
+    return;
+  }
+  if (meta && k === 'y'){ e.preventDefault(); redo(); return; }
+
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (k === 'r'){ commit(); S.seed = (Math.random()*1e9)|0; punch(false); }
+  else if (k === 'e'){ exportPNG(2); }
+  else if (k === 'delete' || k === 'backspace'){ deleteSelected(); }
+  else if (k === 'escape'){ selectHole(-1); }
+});
+
+/* ------------------------------------------------------------------ */
+/* 11. 启动                                                           */
+/* ------------------------------------------------------------------ */
+stage.addEventListener('contextmenu', e => e.preventDefault());
+
+(function init(){
+  applyCanvasSize();
+  buildPresets();
+  buildShapes();
+  buildSliders();
+  buildSwatches();
+  buildRatios();
+  buildFilters();
+  buildTextures();
+  setMode('array');
+  setAdv(false);
+  stage.style.cursor = 'default';
+  punch();
+  refreshCfgList();
+  loadSaved();          // 恢复上次的参数（图片不在其中，需重新上传）
+  syncUI();
+  render();
+})();
+</script>
+</body>
+</html>
