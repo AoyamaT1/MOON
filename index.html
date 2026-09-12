@@ -444,6 +444,18 @@ kbd{background:var(--surface3);border:1px solid var(--line);border-radius:5px;pa
         </div>
       </div>
       <div class="sec">
+        <p class="lab">图片取景</p>
+        <div class="sl"><label>缩放</label><input type="range" id="fitScale" min="1" max="3" step="0.01" value="1"><span class="val" id="fitScaleV">1.00×</span></div>
+        <div class="grid2">
+          <div class="sl"><label>左右</label><input type="range" id="fitX" min="-0.5" max="0.5" step="0.005" value="0"><span class="val" id="fitXV">0%</span></div>
+          <div class="sl"><label>上下</label><input type="range" id="fitY" min="-0.5" max="0.5" step="0.005" value="0"><span class="val" id="fitYV">0%</span></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="chip" id="fitReset">重置取景</button>
+          <span class="note" style="flex:1;min-width:0">在画布上滚轮也能缩放</span>
+        </div>
+      </div>
+      <div class="sec">
         <p class="lab">画布比例</p>
         <div class="row" id="ratios"></div>
       </div>
@@ -583,6 +595,8 @@ function hex2rgb(h){
   return [n>>16&255, n>>8&255, n&255];
 }
 const rgba = (h,a) => { const c = hex2rgb(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+/** 相对亮度 0..1，用来判断该压暗还是提亮 */
+const luma = h => { const c = hex2rgb(h); return (.2126*c[0] + .7152*c[1] + .0722*c[2]) / 255; };
 /** 提亮 / 压暗一个 hex 颜色 */
 function shade(h, amt){
   const c = hex2rgb(h).map(v => Math.round(amt>=0 ? v+(255-v)*amt : v*(1+amt)));
@@ -725,41 +739,50 @@ const LAYOUTS = [
   ['cluster','聚簇'],['rain','落雨']
 ];
 
-function buildLayout(name, n, rng, P){
+/**
+ * 生成一套归一化排布坐标（0..1）
+ * @param box 目标区域的像素尺寸与孔径 { w, h, d } —— 网格类排布按 d 算间距，
+ *            这样"密度=1"在任何孔径/数量下都恰好是"孔挨着孔"，而不是靠猜边距。
+ */
+function buildLayout(name, n, rng, P, box){
   const pts = [];
   const push = (u,v) => pts.push({u,v});
+  const B = box || { w: 1200, h: 1200, d: 1200*.11 };
+  // 密度统一语义：**越大越紧**。以前写反了 —— 密度拉满反而铺得最开，
+  // 所以"阵列"在最小密度下依然很散。
+  const sp = 1 - P.density;
+  // 相邻孔中心的间距（像素）：密度 0 → 2.6 倍孔径，密度 1 → 0.85 倍（略微重叠）
+  const gap  = B.d * (2.6 - 1.75 * P.density);
+  /** 按间距算网格：跨度不够就自动压缩，够就居中铺开 */
+  const gridAt = (cols, rows) => {
+    const sx = Math.min(.94, (cols-1)*gap / B.w);
+    const sy = Math.min(.94, (rows-1)*gap / B.h);
+    for (let i=0;i<n;i++){
+      const c = i%cols, r = (i/cols)|0;
+      push(cols>1 ? .5-sx/2 + sx*c/(cols-1) : .5,
+           rows>1 ? .5-sy/2 + sy*r/(rows-1) : .5);
+    }
+  };
 
   switch(name){
     case 'grid': {
       const cols = Math.max(1, Math.round(Math.sqrt(n*1.35)));
-      const rows = Math.ceil(n/cols);
-      const m = .06 + (1-P.density)*.20;
-      for (let i=0;i<n;i++){
-        const c = i%cols, r = (i/cols)|0;
-        push(cols>1 ? m+(1-2*m)*c/(cols-1) : .5,
-             rows>1 ? m+(1-2*m)*r/(rows-1) : .5);
-      }
+      gridAt(cols, Math.ceil(n/cols));
       break;
     }
     case 'matrix': {
       const cols = Math.max(1, Math.round(Math.sqrt(n)));
-      const rows = Math.ceil(n/cols);
-      const m = .04 + (1-P.density)*.14;
-      for (let i=0;i<n;i++){
-        const c = i%cols, r = (i/cols)|0;
-        push(m+(1-2*m)*(cols>1?c/(cols-1):.5),
-             m+(1-2*m)*(rows>1?r/(rows-1):.5));
-      }
+      gridAt(cols, Math.ceil(n/cols));
       break;
     }
     case 'scatter': {
-      const s = .26 + P.density*.55;
+      const s = .20 + sp*.62;
       for (let i=0;i<n;i++)
         push(.5+(rng()+rng()+rng()-1.5)*s, .5+(rng()+rng()+rng()-1.5)*s);
       break;
     }
     case 'diagonal': {
-      const s = .12 + P.density*.5;
+      const s = .10 + sp*.52;
       for (let i=0;i<n;i++){
         const t = n>1 ? i/(n-1) : .5;
         push(.5+(t-.5)*s*2, .5-(t-.5)*s*2);
@@ -767,7 +790,7 @@ function buildLayout(name, n, rng, P){
       break;
     }
     case 'wave': {
-      const amp = .10 + P.density*.30, cyc = 1.4 + (1-P.density)*2.2;
+      const amp = .08 + sp*.32, cyc = 1.4 + P.density*2.2;
       for (let i=0;i<n;i++){
         const t = n>1 ? i/(n-1) : .5;
         push(t, .5 + Math.sin(t*Math.PI*cyc)*amp);
@@ -775,7 +798,7 @@ function buildLayout(name, n, rng, P){
       break;
     }
     case 'ring': {
-      const R = .18 + P.density*.32;
+      const R = .14 + sp*.36;
       for (let i=0;i<n;i++){
         const a = i/n*TAU - Math.PI/2;
         push(.5+Math.cos(a)*R, .5+Math.sin(a)*R);
@@ -787,13 +810,13 @@ function buildLayout(name, n, rng, P){
       for (let i=0;i<n;i++){
         const t = n>1 ? i/(n-1) : 0;
         const a = t*TAU*T;
-        const R = .04 + t*(.20+P.density*.26);
+        const R = .04 + t*(.16 + sp*.30);
         push(.5+Math.cos(a)*R, .5+Math.sin(a)*R);
       }
       break;
     }
     case 'border': {
-      const m = .10 + (1-P.density)*.18;
+      const m = .07 + P.density*.26;
       for (let i=0;i<n;i++){
         const t = n>1 ? i/(n-1) : 0;
         const d = t*4;
@@ -805,19 +828,21 @@ function buildLayout(name, n, rng, P){
       break;
     }
     case 'cluster': {
-      const k = 2 + Math.round(P.density*2);
+      const k = 2 + Math.round(sp*2);
+      const jit = .07 + sp*.14;
       const cs = [];
-      for (let i=0;i<k;i++) cs.push([.22+rng()*.56, .22+rng()*.56]);
+      for (let i=0;i<k;i++) cs.push([.26+rng()*.48, .26+rng()*.48]);
       for (let i=0;i<n;i++){
         const c = cs[i%k];
-        push(c[0]+(rng()+rng()-1)*.16, c[1]+(rng()+rng()-1)*.16);
+        push(c[0]+(rng()+rng()-1)*jit, c[1]+(rng()+rng()-1)*jit);
       }
       break;
     }
     case 'rain':
     default: {
+      const w = .30 + P.density*.68;          // 密度拉满 → 落点收拢
       for (let i=0;i<n;i++)
-        push(rng()*.96+.02, rng()*.96+.02);
+        push(.5 + (rng()-.5)*w, .5 + (rng()-.5)*w);
       break;
     }
   }
@@ -869,10 +894,14 @@ const S = {
 
   // tilt      碎片/孔自身的随机歪斜（独立于"错落"的位移抖动）
   // pieceScale 碎片相对孔洞的大小倍率 —— 两者解耦，可以做出"孔小碎片大"的层叠
-  P: { count:24, size:.055, density:.5, dir:0, ratio:.45, scatter:.35, tilt:.25, pieceScale:1 },
+  // ratio 默认 0：孔大小一致才整齐，大小参差作为可选项而不是默认观感
+  P: { count:24, size:.055, density:.5, dir:0, ratio:0, scatter:.35, tilt:.25, pieceScale:1 },
 
   split: .55,
   aspect: 1.25,                       // 高 / 宽   (1.25 = 4:5)
+
+  // 图片在画框里的取景：scale=1 是 cover，x/y 是相对画框宽高的位移
+  imgFit: { scale: 1, x: 0, y: 0 },
 
   bg: { color:'#a8792f', color2:'#7d5518', style:'flat' },
 
@@ -941,8 +970,10 @@ function buildPaper(){
   c.width = ir.w; c.height = ir.h;
   const x = c.getContext('2d');
   const iw = S.img.naturalWidth, ih = S.img.naturalHeight;
-  const s  = Math.max(c.width/iw, c.height/ih);
+  // cover 铺满，再叠加用户自己的缩放/位移（S.imgFit）
+  const s  = Math.max(c.width/iw, c.height/ih) * S.imgFit.scale;
   const dw = iw*s, dh = ih*s;
+  const ox = S.imgFit.x * c.width, oy = S.imgFit.y * c.height;
   const f  = S.filter;
   // 平铺块的尺寸跟着画布分辨率走，保证预览和导出观感一致
   const ts = Math.max(8, Math.round(180 * (SW / 1200)));
@@ -956,7 +987,7 @@ function buildPaper(){
   if (+f.blur     >  0)  fl.push(`blur(${f.blur}px)`);
   x.imageSmoothingQuality = 'high';
   if (fl.length) x.filter = fl.join(' ');
-  x.drawImage(S.img, (c.width-dw)/2, (c.height-dh)/2, dw, dh);
+  x.drawImage(S.img, (c.width-dw)/2 + ox, (c.height-dh)/2 + oy, dw, dh);
   x.filter = 'none';
 
   // 2) 色温：暖橙 / 冷蓝叠加
@@ -1258,13 +1289,30 @@ function bevel(path, id, cx, cy, r, sign, angDeg){
     ctx.save(); ctx.fillStyle = g; ctx.fill(path, rule); ctx.restore();
   }
 
-  if (!S.fx.bevel && !S.fx.rim) return;
+  // 立体全关时也得让人看出"这是个孔"。否则相邻的孔都是纯色、边缘无定义，
+  // 会糊成一片，看起来像雾气斑点。这里只描一圈切口，不伪造任何高度。
+  if (!S.fx.bevel && !S.fx.rim && !S.fx.shadow){
+    const tex = getBoardTexture(S.bg.style);
+    const avg = (tex && tex.avg) || S.bg.color;
+    // 亮底板压暗、暗底板提亮 —— 一律压暗的话，纯黑底板上切口会黑成一片看不见
+    const delta = luma(avg) > .45 ? -.34 : .34;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = shade(avg, sign < 0 ? delta : delta*.6);
+    ctx.globalAlpha = .65;
+    ctx.lineWidth = Math.max(1.5, r*.08);
+    ctx.stroke(path);
+    ctx.restore();
+    return;
+  }
 
   // ---- 倒角：用"沿光源方向的渐变描边"裁一半，天然得到方向性环形明暗 ----
   if (S.fx.bevel){
     const inner = sign < 0;
-    const g = ctx.createLinearGradient(cx-lx*r, cy-ly*r, cx+lx*r, cy+ly*r);
-    if (inner){                       // 凹：受光侧内壁暗，背光侧内壁亮
+    // 渐变必须从「受光侧」起、往「背光侧」走。
+    // (lx,ly) 指向光源，所以起点是 cx+lx*r。写反了孔就会鼓出来而不是凹下去。
+    const g = ctx.createLinearGradient(cx+lx*r, cy+ly*r, cx-lx*r, cy-ly*r);
+    if (inner){                       // 凹：受光侧内壁落在阴影里 → 暗；背光侧内壁被照亮 → 亮
       g.addColorStop(0,   `rgba(0,0,0,${.66*k})`);
       g.addColorStop(.30, `rgba(0,0,0,${.17*k})`);
       g.addColorStop(.50, 'rgba(0,0,0,0)');
@@ -1570,7 +1618,11 @@ function regenPieces(){
   const keepRng = S.rng;
   const rng = mulberry32(S.seed ^ 0x9E3779B9);
   S.rng = rng;
-  const pts = buildLayout(S.preset, n, rng, S.P);
+  // 碎片排布在底板区，孔径按碎片大小算（受 pieceScale 影响）
+  const srr = spillRect();
+  const pts = buildLayout(S.preset, n, rng, S.P, {
+    w: srr.w, h: srr.h, d: clamp(S.P.size*SW, 2.5, SW*.22) * 2 * S.P.pieceScale
+  });
   S.rng = keepRng;
   S.pieces = pts.map((p, i) => {
     const o = keep ? old[i] : null;
@@ -1593,7 +1645,11 @@ function punch(keepManual = true){
   S.rng = mulberry32(S.seed);
   const rng = S.rng;
   const n = clamp(Math.round(S.P.count), 1, 300);
-  const pts = buildLayout(S.preset, n, rng, S.P);
+  // 孔打在图片区，间距按孔径算
+  const irr = imgRect();
+  const pts = buildLayout(S.preset, n, rng, S.P, {
+    w: irr.w, h: irr.h, d: clamp(S.P.size*SW, 2.5, SW*.22) * 2
+  });
   const old = S.holes;
   const keep = keepManual && old.length === pts.length;
   S.holes = pts.map((p, i) => {
@@ -1637,7 +1693,7 @@ function snapshot(){
     holes: S.holes, pieces: S.pieces,
     P: S.P, preset: S.preset, shape: S.shape, randomShape: S.randomShape,
     split: S.split, aspect: S.aspect,
-    bg: S.bg, fx: S.fx, filter: S.filter, text: S.text,
+    bg: S.bg, fx: S.fx, filter: S.filter, text: S.text, imgFit: S.imgFit,
     seed: S.seed
   });
 }
@@ -1658,6 +1714,7 @@ function restore(json){
     P: s.P, preset: s.preset, shape: s.shape, randomShape: s.randomShape,
     split: s.split, aspect: s.aspect,
     bg: s.bg, fx: s.fx, filter: s.filter || S.filter, text: s.text,
+    imgFit: s.imgFit || { scale:1, x:0, y:0 },
     seed: s.seed
   });
   selectHole(-1);        // 索引可能已失效
@@ -1738,6 +1795,7 @@ function syncUI(){
   buildTextures();          // 纹理缩略图依赖当前颜色，必须重建
   $('#split').value = S.split;
   $('#splitV').textContent = Math.round(S.split*100)+'%';
+  syncFitUI();
   document.querySelectorAll('#ratios .chip').forEach(el =>
     el.classList.toggle('on', Math.abs(+el.dataset.v - S.aspect) < 1e-4));
   // 文案
@@ -1757,7 +1815,8 @@ function syncUI(){
 /* 出厂默认值：在 init 跑之前抓一份快照 */
 const DEFAULTS = JSON.parse(JSON.stringify({
   P: S.P, preset: S.preset, shape: S.shape, randomShape: S.randomShape,
-  split: S.split, aspect: S.aspect, bg: S.bg, fx: S.fx, filter: S.filter, text: S.text
+  split: S.split, aspect: S.aspect, bg: S.bg, fx: S.fx, filter: S.filter,
+  text: S.text, imgFit: S.imgFit
 }));
 
 /** 恢复默认：参数全部回出厂，但保留已载入的图片（别让用户丢素材） */
@@ -1767,6 +1826,7 @@ function resetAll(){
   Object.assign(S, {
     P: d.P, preset: d.preset, shape: d.shape, randomShape: d.randomShape,
     split: d.split, aspect: d.aspect, bg: d.bg, fx: d.fx, filter: d.filter, text: d.text,
+    imgFit: d.imgFit,
     seed: 20260912
   });
   buildPaper();
@@ -1804,7 +1864,7 @@ function presetIcon(name, size){
   x.scale(dpr,dpr);
   const rng = mulberry32(7);
   const dummy = { dir:0, density:.72, scatter:0 };
-  const pts = buildLayout(name, 9, rng, dummy);
+  const pts = buildLayout(name, 9, rng, dummy, { w:size, h:size, d:size*.20 });
   x.fillStyle = '#ddd6c6';
   for (const p of pts){
     x.beginPath();
@@ -2185,6 +2245,67 @@ $('#split').oninput = e => {
   scheduleRender();
 };
 
+/* --- 8.8b 图片取景：缩放 / 位移 --- */
+let fitRafPending = 0;
+function scheduleFit(){
+  if (fitRafPending) return;
+  fitRafPending = requestAnimationFrame(() => { fitRafPending = 0; buildPaper(); render(); });
+}
+function syncFitUI(){
+  $('#fitScale').value = S.imgFit.scale;
+  $('#fitScaleV').textContent = (+S.imgFit.scale).toFixed(2)+'×';
+  $('#fitX').value = S.imgFit.x;
+  $('#fitXV').textContent = Math.round(S.imgFit.x*100)+'%';
+  $('#fitY').value = S.imgFit.y;
+  $('#fitYV').textContent = Math.round(S.imgFit.y*100)+'%';
+}
+['fitScale','fitX','fitY'].forEach(id => {
+  const el = $('#'+id);
+  commitOnDrag(el);
+  el.oninput = () => {
+    const v = +el.value;
+    if (id === 'fitScale') S.imgFit.scale = v;
+    else if (id === 'fitX') S.imgFit.x = v;
+    else S.imgFit.y = v;
+    syncFitUI();
+    scheduleFit();
+  };
+});
+$('#fitReset').onclick = () => {
+  commit();
+  S.imgFit = { scale: 1, x: 0, y: 0 };
+  syncFitUI();
+  scheduleFit();
+};
+
+/* 画布上滚轮缩放取景（不需要按住任何键，位置以指针为中心） */
+stage.addEventListener('wheel', e => {
+  if (!S.img || !paper) return;
+  e.preventDefault();
+  commitOnWheel();
+  const before = S.imgFit.scale;
+  const next = clamp(before * (e.deltaY < 0 ? 1.08 : 1/1.08), 1, 3);
+  if (next === before) return;
+  // 让指针下的那个点在缩放前后尽量待在原地
+  const r = stage.getBoundingClientRect();
+  const mx = (e.clientX - r.left) / r.width  - .5;
+  const my = (e.clientY - r.top ) / r.height - .5;
+  const k  = 1 - next/before;
+  S.imgFit.x = clamp(S.imgFit.x + mx*k, -.5, .5);
+  S.imgFit.y = clamp(S.imgFit.y + my*k, -.5, .5);
+  S.imgFit.scale = next;
+  syncFitUI();
+  scheduleFit();
+}, { passive:false });
+
+// 滚轮连续滚动算一步撤销（首次触发时压栈）
+let wheelArmed = false, wheelTimer = 0;
+function commitOnWheel(){
+  if (!wheelArmed){ wheelArmed = true; commit(); }
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => { wheelArmed = false; }, 400);
+}
+
 /* --- 8.9 文案面板 --- */
 $('#txTitle').oninput = e => { S.text.title = e.target.value; scheduleRender(); };
 $('#txSub').oninput   = e => { S.text.sub   = e.target.value; scheduleRender(); };
@@ -2278,6 +2399,7 @@ function currentConfig(){
     P: JSON.parse(JSON.stringify(S.P)),
     preset: S.preset, shape: S.shape, randomShape: S.randomShape, mode: S.mode,
     split: S.split, aspect: S.aspect,
+    imgFit: JSON.parse(JSON.stringify(S.imgFit)),
     bg: JSON.parse(JSON.stringify(S.bg)),
     fx: JSON.parse(JSON.stringify(S.fx)),
     filter: JSON.parse(JSON.stringify(S.filter)),
@@ -2289,6 +2411,7 @@ function currentConfig(){
 function applyConfig(c){
   if (!c || typeof c !== 'object') return;
   if (c.P)      Object.assign(S.P, c.P);
+  if (c.imgFit) Object.assign(S.imgFit, c.imgFit);
   if (c.bg)     Object.assign(S.bg, c.bg);
   if (c.fx)     Object.assign(S.fx, c.fx);
   if (c.filter) Object.assign(S.filter, c.filter);
