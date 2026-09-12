@@ -1358,7 +1358,8 @@ function render(){
   }
 
   // ---- 打孔 ----
-  for (const h of S.holes){
+  // 没载入图片时不画孔：否则首屏是一堆打空白底板的洞，看起来像坏了
+  for (const h of (paper ? S.holes : [])){
     const { x, y, r } = holePos(h);
     const rot = (S.P.dir + h.rotOff) * Math.PI/180;
     const path = shapePath(h.shape, x, y, r, rot);
